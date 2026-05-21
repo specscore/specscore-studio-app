@@ -6,6 +6,7 @@ import {
     DocumentData,
     DocumentReference,
     Firestore,
+    getDoc,
     getFirestore,
     onSnapshot,
     setDoc,
@@ -34,6 +35,9 @@ export interface FirestoreOps {
         data: DocumentData,
         options?: SetOptions,
     ): Promise<void>;
+    getDoc(
+        reference: DocumentReference<DocumentData>,
+    ): Promise<{ exists: () => boolean; data: () => DocumentData | undefined }>;
 }
 
 export const FIRESTORE_OPS = new InjectionToken<FirestoreOps>('FirestoreOps', {
@@ -43,6 +47,7 @@ export const FIRESTORE_OPS = new InjectionToken<FirestoreOps>('FirestoreOps', {
         onSnapshot: (reference, next, error) => onSnapshot(reference, next, error),
         setDoc: (reference, data, options) =>
             options ? setDoc(reference, data, options) : setDoc(reference, data),
+        getDoc: (reference) => getDoc(reference),
     }),
 });
 
