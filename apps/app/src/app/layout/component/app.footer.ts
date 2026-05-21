@@ -4,7 +4,7 @@ import { Component } from '@angular/core';
     standalone: true,
     selector: 'app-footer',
     template: `<div class="layout-footer">
-        SpecScore.Studio App
+        SpecScore.Studio
     </div>`
 })
 export class AppFooter {}
