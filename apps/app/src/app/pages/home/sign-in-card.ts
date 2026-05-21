@@ -1,5 +1,4 @@
 import { Component, inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { AuthService } from '@/app/core/services/auth.service';
 
@@ -20,10 +19,10 @@ import { AuthService } from '@/app/core/services/auth.service';
 })
 export class SignInCard {
     private readonly authService = inject(AuthService);
-    private readonly router = inject(Router);
 
     async signInWithGitHub() {
+        // No navigation needed: the home page reactively switches from
+        // sign-in-card to user-auth-card once authService.user() updates.
         await this.authService.signInWithGitHub();
-        await this.router.navigateByUrl('/sessions');
     }
 }
