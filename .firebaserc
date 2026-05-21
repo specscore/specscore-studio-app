@@ -1,14 +1,5 @@
 {
   "projects": {
-    "default": "specscore"
-  },
-  "targets": {
-    "specscore": {
-      "hosting": {
-        "specscore-app": [
-          "specscore-app"
-        ]
-      }
-    }
+    "default": "sneat-work"
   }
 }
