@@ -68,7 +68,7 @@ import { CachedUserService } from '@/app/core/services/cached-user.service';
             />
           </g>
         </svg>
-        <span>SpecScore.Studio App</span>
+        <span style="white-space: nowrap">SpecScore.Studio App</span>
       </a>
     </div>
 
