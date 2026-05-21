@@ -1,0 +1,41 @@
+<p-menubar [model]="menuItems">
+  <ng-template #start>
+    <span class="brand">SpecScore App</span>
+  </ng-template>
+  <ng-template #end>
+    <p-tag value="beta" severity="secondary" />
+  </ng-template>
+</p-menubar>
+
+<main class="content">
+  <p-card header="Welcome to SpecScore App">
+    <p>Browse specifications from GitHub repositories.</p>
+    <ng-template #footer>
+      <p-button label="Get Started" icon="pi pi-arrow-right" iconPos="right" />
+      <p-button label="Learn More" severity="secondary" variant="outlined" />
+    </ng-template>
+  </p-card>
+
+  <div class="status-cards">
+    <p-card>
+      <div class="status-item">
+        <span class="status-label">Projects</span>
+        <p-tag value="0 saved" severity="info" />
+      </div>
+    </p-card>
+    <p-card>
+      <div class="status-item">
+        <span class="status-label">Last viewed</span>
+        <p-tag value="never" severity="secondary" />
+      </div>
+    </p-card>
+    <p-card>
+      <div class="status-item">
+        <span class="status-label">Status</span>
+        <p-tag value="ready" severity="success" />
+      </div>
+    </p-card>
+  </div>
+</main>
+
+<router-outlet></router-outlet>

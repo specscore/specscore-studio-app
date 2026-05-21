@@ -1,0 +1,15 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users: authenticated users can read their own record and update their
+    // projects map. Only the `projects` field is client-writable; everything
+    // else on the user doc is server-managed.
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['projects']);
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchPackagePatterns": ["^@angular/", "^@nx/", "^nx$"],
+      "groupName": "Angular/NX monorepo",
+      "groupSlug": "angular-nx"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchPackagePatterns": ["^primeng$", "^@primeng/"],
+      "groupName": "PrimeNG",
+      "groupSlug": "primeng"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    }
+  ]
+}

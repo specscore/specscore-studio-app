@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "specscore"
+  },
+  "targets": {
+    "specscore": {
+      "hosting": {
+        "specscore-app": [
+          "specscore-app"
+        ]
+      }
+    }
+  }
+}

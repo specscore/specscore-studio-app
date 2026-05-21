@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "specscore-studio-app",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-05-15",
+  "assets": {
+    "directory": "./dist/apps/app/browser",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "routes": [
+    { "pattern": "specscore.studio/app", "zone_name": "specscore.studio" },
+    { "pattern": "specscore.studio/app/*", "zone_name": "specscore.studio" }
+  ]
+}

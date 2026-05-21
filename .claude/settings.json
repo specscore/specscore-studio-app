@@ -1,0 +1,28 @@
+{
+  "extraKnownMarketplaces": {
+    "nx-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "nrwl/nx-ai-agents-config"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "nx@nx-claude-plugins": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Run eslint on the edited file using `pnpm exec eslint --no-error-on-unmatched-pattern <file_path>`. The file path is in $ARGUMENTS under tool_input.file_path or tool_response.filePath. Only lint files ending in .ts, .js, .mjs, .cjs, or .html — skip all others silently. If eslint reports errors, fix them by editing the file. If eslint passes or the file type doesn't match, do nothing.",
+            "timeout": 60,
+            "statusMessage": "Linting edited file..."
+          }
+        ]
+      }
+    ]
+  }
+}
