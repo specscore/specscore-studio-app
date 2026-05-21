@@ -88,3 +88,6 @@ Data refreshes on page load (not real-time). Shows placeholder/skeleton state wh
 ## Outstanding Questions
 
 - Acceptance criteria for the remaining cards (Sign in, GitHub App, Getting Started, Community Pulse) and layout breakpoints are not yet defined.
+
+---
+*This document follows the https://specscore.md/feature-specification*

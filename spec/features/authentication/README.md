@@ -80,3 +80,6 @@ These are stored alongside the GitHub access token under the user's UID.
 - How are GitHub access tokens in Firestore protected? (e.g., Firestore security rules restricting access to server-side only via Firebase Admin SDK, or client-readable by the owning user only.)
 - How does the incremental scope upgrade callback work? The flow bypasses Firebase Auth and requires a server-side token exchange (OAuth client secret). Does this use a Firebase Cloud Function or another backend endpoint?
 - Should mobile sign-in (`signInWithRedirect`) be tested as a separate acceptance criterion, or is it covered implicitly by AC-1?
+
+---
+*This document follows the https://specscore.md/feature-specification*

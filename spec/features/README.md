@@ -8,7 +8,6 @@
 | [home-page](home-page/README.md) | Conceptual | Default view for visitors — card grid for discovery and onboarding |
 | [project-page](project-page/README.md) | Conceptual | Project view showing GitHub README with sidebar navigation to specs and runners |
 | [user-auth-card](user-auth-card/README.md) | Conceptual | Auth-state-aware card showing linked providers when signed in |
-| [cloud-runners](cloud-runners/README.md) | Conceptual | Unified runner model for manual VPS, cloud-provisioned, demo, and managed compute |
 
 ## Feature Summaries
 
@@ -50,4 +49,6 @@ graph LR
 | [home-page](home-page/README.md) | 1 |
 | [project-page](project-page/README.md) | 4 |
 | [user-auth-card](user-auth-card/README.md) | 3 |
-| [cloud-runners](cloud-runners/README.md) | 5 |
+
+---
+*This document follows the https://specscore.md/features-index-specification*

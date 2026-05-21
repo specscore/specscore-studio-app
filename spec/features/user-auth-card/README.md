@@ -91,3 +91,6 @@ Not defined yet.
 - Should linking a provider show a confirmation toast/message on success?
 - What error handling should be shown if provider linking fails (e.g., account already linked to another user)?
 - ~~Should there be an "Unlink" action for optional providers, or is linking one-way?~~ **Resolved:** Yes — linked providers show "Connected | X" where X disconnects the provider. The last remaining provider cannot be disconnected.
+
+---
+*This document follows the https://specscore.md/feature-specification*

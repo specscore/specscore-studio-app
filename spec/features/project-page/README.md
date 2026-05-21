@@ -107,3 +107,6 @@ apps/app/src/app/
 - Should relative links and images in the README resolve against the GitHub repository (so images render correctly), or is raw text sufficient for MVP?
 - Should the sidebar show a dynamic list of runners (from an API) in future iterations, or remain static?
 - How should the page handle malformed or missing `id` query parameters — redirect to home, or show an error?
+
+---
+*This document follows the https://specscore.md/feature-specification*
