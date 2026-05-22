@@ -3,6 +3,7 @@ import { ButtonModule } from 'primeng/button';
 import { AuthService } from '@/app/core/services/auth.service';
 import { GitHubService, GitHubApiError } from '@/app/core/services/github.service';
 import { UrlSchemeCoordinatesService } from '@/app/core/routing/url-scheme.guard';
+import { inferRefFromReferrer } from '@/app/core/routing/referer-ref-inference';
 
 type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error' | 'handle_unresolved';
 
@@ -132,7 +133,7 @@ export class ProjectPage {
     if (coords.kind === 'path') {
       this.owner = coords.org;
       this.repo = coords.repo;
-      this.ref = coords.ref;
+      this.ref = coords.ref ?? this.inferAndPersistRef();
       this.loadReadme(false);
       return;
     }
@@ -154,6 +155,24 @@ export class ProjectPage {
     await this.authService.signInWithGitHub();
     this.loaded = false;
     this.init();
+  }
+
+  /**
+   * Run Referer-based ref inference (REQ:ref-inference-client-side) once on
+   * bootstrap when the route had no explicit ?ref. On success, push the
+   * inferred ref into the URL via history.replaceState so a refresh or
+   * share preserves the resolved revision. Best-effort — returns undefined
+   * (and does NOT touch the URL) when the referrer is absent, opaque, or
+   * from an unrecognized forge.
+   */
+  private inferAndPersistRef(): string | undefined {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+    const inferred = inferRefFromReferrer(document.referrer);
+    if (!inferred) return undefined;
+    const url = new URL(window.location.href);
+    url.searchParams.set('ref', inferred);
+    window.history.replaceState(window.history.state, '', url.toString());
+    return inferred;
   }
 
   private loadReadme(skipCache: boolean) {
