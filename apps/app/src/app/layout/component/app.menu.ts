@@ -73,10 +73,33 @@ export class AppMenu implements OnInit {
             const coords = this.urlScheme.coordinates();
             if (coords?.kind === 'path') {
                 this.model.set(this.buildProjectMenu(coords));
+                this.syncActivePath(coords);
                 return;
             }
         }
         this.model.set(this.buildDefaultMenu());
+    }
+
+    /**
+     * Bootstrap the AppMenuitem expansion cascade by writing the URL's
+     * coords.path into layoutState.activePath. PrimeNG's AppMenuitem
+     * `isActive` is `activePath.startsWith(fullPath)`, and a parent only
+     * renders its child <ul> when `isActive` is true — so without this
+     * bootstrap a deep-linked URL hits a chicken-and-egg: the child must
+     * be rendered for its `updateActiveStateFromRoute` to set activePath,
+     * but the child only renders if the parent is already active.
+     *
+     * Setting activePath here from the URL's coords.path (the same value
+     * used as each menu item's path/fullPath) makes the entire ancestor
+     * chain immediately active, so as soon as caches populate, the
+     * sub-trees render expanded all the way to the leaf.
+     *
+     * For bare-repo URLs (coords.path === ''), activePath is set to null
+     * so no spec sub-tree expands by default.
+     */
+    private syncActivePath(coords: PathCoordinates) {
+        const activePath = coords.path ? `/${coords.path}` : null;
+        this.layoutService.layoutState.update(val => ({ ...val, activePath }));
     }
 
     private buildProjectMenu(coords: PathCoordinates): MenuItem[] {
@@ -108,7 +131,11 @@ export class AppMenu implements OnInit {
                 // #page= hash highlights which spec view is active in the left nav.
                 routerLink: [routerLink],
                 fragment,
-                path: `/spec-${spec.dir}`,
+                // path string uses the repo's actual directory path (with leading /)
+                // so AppMenuitem's fullPath cascade matches activePath = `/${coords.path}`
+                // via startsWith. Children use the same scheme so each level's
+                // isActive check resolves correctly.
+                path: `/${specPath}`,
                 // Command also navigates programmatically because PrimeNG's
                 // AppMenuitem template only binds [routerLink] when the item
                 // has no children — once this Features/Plans/etc. entry has
@@ -173,7 +200,10 @@ export class AppMenu implements OnInit {
                 icon: 'pi pi-fw pi-folder',
                 routerLink: [routerLink],
                 fragment,
-                path: `/spec-${entry.path}`,
+                // Repo-path scheme matching top-level (`/${specPath}`) so the
+                // fullPath cascade and activePath comparisons line up across
+                // all levels.
+                path: `/${entry.path}`,
                 // Command navigates programmatically — same reason as the
                 // top-level spec items: AppMenuitem's first template branch
                 // (which fires when hasChildren) doesn't render [routerLink].
@@ -235,19 +265,10 @@ export class AppMenu implements OnInit {
             next: (entries) => {
                 this.loadingPaths.delete(dirPath);
                 this.specChildrenCache.set(dirPath, entries);
+                // updateMenu re-runs syncActivePath, so the activePath
+                // bootstrap survives this rebuild even though the tree's
+                // child nodes are newly inserted.
                 this.updateMenu();
-                if (entries.length > 0) {
-                    // Hint the layout's activePath in case PrimeNG's
-                    // routerLinkActive cascade doesn't fully drive expansion.
-                    // The key here mirrors child items' path scheme
-                    // (`/spec-<entry.path>`), so when activePath is set to
-                    // a leaf, the parent chain's isActive checks succeed.
-                    const pathKey = `/spec-${dirPath}`;
-                    this.layoutService.layoutState.update(val => ({
-                        ...val,
-                        activePath: pathKey,
-                    }));
-                }
             },
             error: () => {
                 this.loadingPaths.delete(dirPath);
