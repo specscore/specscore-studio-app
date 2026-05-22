@@ -11,3 +11,25 @@
     flex: 1 1 auto;
     padding-bottom: 2rem;
 }
+
+/* When the project breadcrumb strip is visible (fixed at top: 4rem, height 2.5rem),
+   push the sidebar and main-container down by the breadcrumb's height so nothing
+   underflows. AppLayout adds `.layout-breadcrumbs-visible` to .layout-wrapper based
+   on UrlSchemeCoordinatesService — the class disappears on non-project URLs and the
+   default offsets apply again. */
+/*
+  Topbar ends at 4rem; breadcrumb (height 2.5rem) starts flush at top: 4rem
+  and ends at 6.5rem. Push sidebar + main-container to start flush at 6.5rem
+  (no gap below breadcrumb) so the spacing on both sides of the breadcrumb
+  matches: 0 between topbar and breadcrumb, 0 between breadcrumb and the
+  sidebar/main row.
+*/
+.layout-wrapper.layout-breadcrumbs-visible {
+    .layout-main-container {
+        padding-top: 6.5rem;
+    }
+    .layout-sidebar {
+        top: 6.5rem;
+        height: calc(100vh - 8.5rem);
+    }
+}

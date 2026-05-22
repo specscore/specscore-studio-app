@@ -157,6 +157,11 @@ export class AppMenu implements OnInit {
             const subItems = this.buildChildItems(specPath, projectRoot, coords, spec.dir);
             if (subItems && subItems.length > 0) {
                 item.items = subItems;
+            } else if (this.specChildrenCache.get(specPath) === undefined) {
+                // Eager pre-fetch top-level spec dirs so chevrons show
+                // accurately even on bare project URLs (where
+                // expandForCurrentPath wouldn't otherwise load them).
+                queueMicrotask(() => this.loadChildren(specPath, coords));
             }
             return item;
         });
@@ -219,7 +224,20 @@ export class AppMenu implements OnInit {
             const grandchildren = this.buildChildItems(entry.path, projectRoot, coords, pageHash);
             if (grandchildren && grandchildren.length > 0) {
                 childItem.items = grandchildren;
+            } else if (this.specChildrenCache.get(entry.path) === undefined) {
+                // Eager pre-fetch: this folder hasn't been loaded yet, so we
+                // don't know whether it has sub-directories. Schedule a
+                // background load (microtask so we don't mutate state in
+                // the middle of this render). After the fetch resolves the
+                // cache holds the truth — next render either populates
+                // `items` (chevron shows) or sets cache to [] (chevron
+                // stays hidden). This trades a few extra GitHub API calls
+                // for accurate chevron rendering: no false-positive
+                // chevrons on leaf folders.
+                queueMicrotask(() => this.loadChildren(entry.path, coords));
             }
+            // If cache === [] (loaded, no sub-dirs), neither `items` nor
+            // any eager-load fires — chevron is correctly absent.
             return childItem;
         });
     }

@@ -26,7 +26,7 @@ import { filter } from 'rxjs/operators';
                 tabindex="0"
                 pRipple
             >
-                <i [ngClass]="item().icon" class="layout-menuitem-icon"></i>
+                <i [ngClass]="displayIcon()" class="layout-menuitem-icon"></i>
                 <span class="layout-menuitem-text">{{ item().label }}</span>
                 @if (item().badge) {
                     <span class="layout-menuitem-badge">{{ item().badge }}</span>
@@ -147,6 +147,19 @@ export class AppMenuitem implements OnInit, AfterViewInit {
     hasChildren = computed(() => this.item()?.items && this.item()?.items.length > 0);
 
     hasRouterLink = computed(() => !!this.item()?.routerLink);
+
+    /**
+     * Icon to render. If the item is currently active AND uses the
+     * `pi-folder` icon (and not already `pi-folder-open`), swap to the
+     * open variant so the folder visually opens/closes with expansion.
+     * Items with non-folder icons (Architecture's sitemap, Features's
+     * list, etc.) are returned unchanged.
+     */
+    displayIcon = computed(() => {
+        const icon = this.item()?.icon ?? '';
+        if (!this.isActive()) return icon;
+        return icon.replace(/\bpi-folder\b(?!-)/, 'pi-folder-open');
+    });
 
     fullPath = computed(() => {
         const itemPath = this.item()?.path;
