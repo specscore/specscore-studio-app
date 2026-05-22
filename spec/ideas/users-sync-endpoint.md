@@ -131,7 +131,7 @@ The two phases share a wire contract — the `SyncUserRequest` shape — so swap
   - Firestore rules updated for the `projects` field (done in commit `32158ae`)
   - sneat-core-modules `userus` module conventions (for Phase 1)
 
-## Outstanding Questions
+## Open Questions
 
 1. **Where does the Phase 1 implementation live?** `sneat-go-backend` is the natural home, but it has no `spec/` directory and isn't SpecScore-managed. Do we (a) bootstrap SpecScore in `sneat-go-backend` and file the Feature there, (b) file the Feature here in `specscore-studio-app` and accept the cross-repo seam, or (c) introduce a `specscore-cloud` repo as a sibling?
 2. **Does sneat's auth layer already verify Firebase ID tokens?** If not, that's a prerequisite Feature, not part of this Idea.

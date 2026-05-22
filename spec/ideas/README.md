@@ -8,7 +8,7 @@ Pre-spec one-pagers. Each Idea is a lint-clean problem-direction-MVP one-pager t
 |------|--------|------|-------|-------------|
 | [users-sync-endpoint](users-sync-endpoint.md) | Draft | 2026-05-21 | alexandertrakhimenok | — |
 
-## Outstanding Questions
+## Open Questions
 
 None at this time.
 

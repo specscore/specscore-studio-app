@@ -1,5 +1,7 @@
 # Feature: Home Page
 
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=explore) | [Edit](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=edit) | [Ask question](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=ask) | [Request change](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=request-change) |
+
 **Status:** Conceptual
 
 ## Summary
@@ -85,7 +87,7 @@ Data refreshes on page load (not real-time). Shows placeholder/skeleton state wh
 | AC-2 | Unauthenticated user sees a sign-in prompt in the My Projects section of the Projects card. |
 | AC-3 | Clicking the Free Cloud VM CTA shows a "not available yet" message and records a tracking event. |
 
-## Outstanding Questions
+## Open Questions
 
 - Acceptance criteria for the remaining cards (Sign in, GitHub App, Getting Started, Community Pulse) and layout breakpoints are not yet defined.
 

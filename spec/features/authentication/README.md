@@ -1,5 +1,7 @@
 # Feature: Authentication
 
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=explore) | [Edit](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=edit) | [Ask question](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=ask) | [Request change](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=request-change) |
+
 **Status:** Conceptual
 
 ## Summary
@@ -73,7 +75,7 @@ These are stored alongside the GitHub access token under the user's UID.
 | AC-4 | After sign-out, the user remains on the current page if it supports unsigned viewing (determined by route configuration). If the page requires authentication, the user is redirected to the home page. |
 | AC-5 | Incremental scope upgrade stores the new token in Firestore, replacing the previous one. |
 
-## Outstanding Questions
+## Open Questions
 
 - What specific actions will trigger each incremental scope upgrade? (Define per-scope as those features are specified.)
 - Should the consent explanation before scope upgrade be a modal, a redirect page, or inline in the triggering UI?

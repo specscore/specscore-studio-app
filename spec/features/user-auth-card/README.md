@@ -1,5 +1,7 @@
 # Feature: User Auth Card
 
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=explore) | [Edit](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=edit) | [Ask question](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=ask) | [Request change](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=request-change) |
+
 **Status:** Conceptual
 
 ## Summary
@@ -86,7 +88,7 @@ The home page imports both and switches between them using `@if (authService.isA
 
 Not defined yet.
 
-## Outstanding Questions
+## Open Questions
 
 - Should linking a provider show a confirmation toast/message on success?
 - What error handling should be shown if provider linking fails (e.g., account already linked to another user)?

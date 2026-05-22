@@ -1,0 +1,7 @@
+# SpecScore Repo Config Schema: https://specscore.md/repo-config
+
+project:
+    title: specscore-studio-app
+    host: github.com
+    org: specscore
+    repo: specscore-studio-app

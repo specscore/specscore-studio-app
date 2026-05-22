@@ -1,6 +1,12 @@
 # Feature: Project Page
 
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/project-page?op=explore) | [Edit](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/project-page?op=edit) | [Ask question](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/project-page?op=ask) | [Request change](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/project-page?op=request-change) |
+
 **Status:** Conceptual
+**Date:** 2026-05-22
+**Owner:** alexander.trakhimenok@gmail.com
+**Source Ideas:** —
+**Supersedes:** —
 
 ## Summary
 
@@ -14,13 +20,14 @@ Users who click on a project from the home page have no destination — there is
 
 ### Route
 
-The project page lives at `/project` with a query parameter `id` containing the full GitHub URL:
+The project page is served by the canonical routes defined in the [studio-url-scheme](../studio-url-scheme/README.md) feature. Both shapes resolve here:
 
-```
-/project?id=github.com/specscore/specscore
-```
+- Path shape: `/app/project/{git_host}/{org}/{repo}/{path}`
+- Handle shape: `/app/project/~{handle}/{project-slug}/{path}`
 
-The `id` value is parsed to extract `owner` and `repo` for GitHub API calls.
+The URL-scheme route guard parses and validates the URL (allow-list, IDNA normalization, path-decoding once, traversal rejection). This feature consumes the parsed coordinates (`{git_host, org, repo, path, ref?, op?}`) and renders the README content area described below. When `{path}` is empty the route resolves to the project root, which is what this feature renders.
+
+The legacy URL `/project?id={repo}@{org}@{git_host}` is redirected to the canonical path shape by the studio-url-scheme feature; this feature does not handle that redirect directly.
 
 ### Layout
 
@@ -32,17 +39,17 @@ The sidebar displays the following menu structure when inside a project context:
 
 ```
 Specifications
-  ├─ Features        → /project/features?id=...
-  ├─ Plans           → /project/plans?id=...
-  ├─ Architecture    → /project/architecture?id=...
-  ├─ Tests           → /project/tests?id=...
+  ├─ Features        → list view (URL encoding TBD — see Outstanding Questions)
+  ├─ Plans           → list view (URL encoding TBD)
+  ├─ Architecture    → list view (URL encoding TBD)
+  ├─ Tests           → list view (URL encoding TBD)
 Runners
   ├─ [+ Add]         → (stub action)
 ```
 
-All sidebar links preserve the `?id=...` query parameter so the project context is maintained across navigation.
+All sidebar links MUST preserve the parsed project coordinates (`{git_host}/{org}/{repo}` for the path shape, `~{handle}/{project-slug}` for the handle shape) so the project context is maintained across navigation.
 
-The `AppMenu` component determines which menu model to display based on the active route. When the route starts with `/project`, it shows the project menu; otherwise, it shows the default menu.
+The `AppMenu` component determines which menu model to display based on the active route. When the route matches the canonical `/app/project/…` routes defined in [studio-url-scheme](../studio-url-scheme/README.md), it shows the project menu; otherwise, it shows the default menu.
 
 ### README content area
 
@@ -70,7 +77,7 @@ Sub-routes (`/project/features`, `/project/plans`) display a reusable "Coming so
 
 ### Navigation from Home
 
-Clicking a project entry in the home page's Projects card navigates to `/project?id=github.com/:owner/:repo`.
+Clicking a project entry in the home page's Projects card navigates to the canonical path URL for that project: `/app/project/{git_host}/{org}/{repo}` with an empty `{path}` segment (resolves to the project root).
 
 ### File structure
 
@@ -89,24 +96,59 @@ apps/app/src/app/
 ## Dependencies
 
 - authentication
+- studio-url-scheme
 
 ## Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| AC-1 | Navigating to `/project?id=github.com/owner/repo` while authenticated with GitHub displays the rendered README.md from that repository. |
-| AC-2 | Navigating to `/project?id=github.com/owner/repo` while not authenticated shows a "Sign in with GitHub to view project content" prompt. |
-| AC-3 | The sidebar displays project-specific menu items (Specifications > Features, Plans; Runners) when on a `/project` route. |
-| AC-4 | All sidebar links preserve the `?id=...` query parameter. |
-| AC-5 | Clicking a stub menu item (Features, Plans) navigates to a "Coming soon" page. |
-| AC-6 | Clicking a project in the home page Projects card navigates to `/project?id=github.com/owner/repo`. |
+### AC: authenticated-readme-rendered
 
-## Outstanding Questions
+Scenario: an authenticated user lands on a project page and sees the rendered README
+**Given** the user is signed in with a linked GitHub identity that can read the target repository
+**When** the user navigates to `/app/project/github.com/owner/repo`
+**Then** the page fetches the repository README via the GitHub API and renders it as HTML in the main content area
+
+### AC: unauthenticated-prompts-signin
+
+Scenario: an unauthenticated visitor is prompted to sign in
+**Given** the user is not signed in (or has no linked GitHub identity)
+**When** the user navigates to `/app/project/github.com/owner/repo`
+**Then** the main content area renders the "Sign in with GitHub to view project content" prompt instead of attempting a GitHub API call
+
+### AC: sidebar-shows-project-menu
+
+Scenario: the sidebar switches to project-context menu items
+**Given** the user is on a canonical `/app/project/…` route
+**When** the AppMenu component selects its menu model
+**Then** the sidebar renders the project menu items (Specifications > Features, Plans, Architecture, Tests; Runners) instead of the default menu
+
+### AC: sidebar-preserves-coordinates
+
+Scenario: sidebar links carry the project context across navigation
+**Given** the user is on a project page with parsed coordinates (path shape `{git_host}/{org}/{repo}` or handle shape `~{handle}/{project-slug}`)
+**When** the user clicks any sidebar link
+**Then** the destination URL preserves those parsed coordinates and remains within the same project context
+
+### AC: stub-pages-coming-soon
+
+Scenario: a not-yet-implemented sub-section renders a placeholder
+**Given** the user is on a project page
+**When** the user clicks a stub menu item (Features, Plans, Architecture, or Tests)
+**Then** the destination route renders a reusable "Coming soon" component with the section title and a brief message
+
+### AC: home-card-navigates-to-canonical
+
+Scenario: clicking a project on the home page navigates to its canonical URL
+**Given** the user is on the home page and at least one project entry is visible in the Projects card
+**When** the user clicks a project entry
+**Then** the router navigates to `/app/project/{git_host}/{org}/{repo}` with an empty `{path}` segment
+
+## Open Questions
 
 - Which Markdown rendering library should be used — `ngx-markdown`, `marked`, or another option?
 - Should relative links and images in the README resolve against the GitHub repository (so images render correctly), or is raw text sufficient for MVP?
 - Should the sidebar show a dynamic list of runners (from an API) in future iterations, or remain static?
-- How should the page handle malformed or missing `id` query parameters — redirect to home, or show an error?
+- How should the page handle a `{path}` that points at a non-existent or inaccessible file under the resolved repo coordinates? (Studio-url-scheme handles host/path validation; this is the in-repo case.)
+- Sub-route URL encoding for list views (Features, Plans, Architecture, Tests): the path shape's `{path}` segment is reserved for in-repo artifact paths, so a Studio-level list view cannot reuse path positions. Options to decide before implementing the stubs: a Studio-level operation parameter (`?op=features-list`), a dedicated path prefix (`/app/list/{kind}/{host}/{org}/{repo}`), or a separate top-level route. Resolve in a follow-up plan.
 
 ---
 *This document follows the https://specscore.md/feature-specification*
