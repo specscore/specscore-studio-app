@@ -13,7 +13,9 @@
 //     UrlSchemeCoordinatesService and MUST NOT re-parse the URL.
 
 import { Injectable, inject, signal } from '@angular/core';
-import type { CanActivateFn, UrlMatcher } from '@angular/router';
+import { Router } from '@angular/router';
+import type { CanActivateFn, UrlMatcher, UrlTree } from '@angular/router';
+import { isAllowedForgeHost } from './forge-host.allowlist';
 
 /** Parsed coordinates from a canonical path-shape URL. */
 export interface PathCoordinates {
@@ -65,18 +67,32 @@ export const canonicalPathMatcher: UrlMatcher = (segments) => {
 
 /**
  * Functional CanActivate guard that parses the canonical path coordinates
- * from the activated route snapshot and writes them to
+ * from the activated route snapshot, validates them, and writes them to
  * UrlSchemeCoordinatesService.
  *
- * In Task 1, always returns true (no validation). Tasks 2 and 3 will add
- * allow-list and path-validation rejection that routes to
- * UnsupportedSourceComponent.
+ * Current validations:
+ *   - Task 2: forge-host allow-list with IDNA normalization.
+ *
+ * On rejection, returns a UrlTree to `/project/unsupported-source` so the
+ * Angular router renders UnsupportedSourceComponent instead of the project
+ * chrome (per REQ:unknown-host-rejection — no phishing surface). The
+ * coordinates service is NOT populated on rejection so downstream consumers
+ * cannot accidentally observe the rejected input.
+ *
+ * Future tasks layer in additional validations:
+ *   - Task 3: path-validation pipeline (traversal, control chars, %2F, %00).
+ *   - Task 4: handle-namespace dot rejection.
  */
-export const urlSchemeGuard: CanActivateFn = (route) => {
+export const urlSchemeGuard: CanActivateFn = (route): boolean | UrlTree => {
   const segs = route.url;
   // canonicalPathMatcher guarantees segs.length >= 3 — defensive check below.
   if (segs.length < 3) return true;
   const [host, org, repo, ...rest] = segs;
+
+  if (!isAllowedForgeHost(host.path)) {
+    return inject(Router).createUrlTree(['/project/unsupported-source']);
+  }
+
   inject(UrlSchemeCoordinatesService).set({
     kind: 'path',
     git_host: host.path,

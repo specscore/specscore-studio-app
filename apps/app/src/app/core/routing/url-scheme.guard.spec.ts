@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { UrlSegment } from '@angular/router';
+import { UrlSegment, UrlTree, provideRouter } from '@angular/router';
 import type { ActivatedRouteSnapshot } from '@angular/router';
 import {
   UrlSchemeCoordinatesService,
@@ -14,16 +14,12 @@ function seg(path: string): UrlSegment {
 
 /**
  * Helper: invoke the functional guard inside an Angular injection context.
- * The guard returns true|UrlTree|... — we narrow to boolean for assertions.
+ * The guard returns true | UrlTree depending on validation outcome.
  */
-function runGuard(snapshot: Partial<ActivatedRouteSnapshot>): boolean {
-  return TestBed.runInInjectionContext(() => {
-    const result = urlSchemeGuard(
-      snapshot as ActivatedRouteSnapshot,
-      { url: '' } as never,
-    );
-    return result as boolean;
-  });
+function runGuard(snapshot: Partial<ActivatedRouteSnapshot>): boolean | UrlTree {
+  return TestBed.runInInjectionContext(() =>
+    urlSchemeGuard(snapshot as ActivatedRouteSnapshot, { url: '' } as never),
+  ) as boolean | UrlTree;
 }
 
 describe('canonicalPathMatcher', () => {
@@ -63,7 +59,11 @@ describe('canonicalPathMatcher', () => {
 
 describe('urlSchemeGuard', () => {
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    // provideRouter gives the guard a Router to construct UrlTrees on
+    // rejection paths.
+    TestBed.configureTestingModule({
+      providers: [provideRouter([])],
+    });
   });
 
   it('parses a bare repo URL into coordinates with empty path', () => {
@@ -104,5 +104,31 @@ describe('urlSchemeGuard', () => {
       repo: 'specscore',
       path: 'spec/features/feature/README.md',
     });
+  });
+
+  it('rejects an unknown host with a UrlTree to /project/unsupported-source', () => {
+    const result = runGuard({
+      url: [seg('evil.example'), seg('foo'), seg('bar')],
+    });
+
+    expect(result).toBeInstanceOf(UrlTree);
+    expect((result as UrlTree).toString()).toBe('/project/unsupported-source');
+  });
+
+  it('rejects a Cyrillic-homoglyph host with a UrlTree to /project/unsupported-source', () => {
+    // First character is U+0456 (Cyrillic) — NOT github.com.
+    const result = runGuard({
+      url: [seg('gіthub.com'), seg('foo'), seg('bar')],
+    });
+
+    expect(result).toBeInstanceOf(UrlTree);
+    expect((result as UrlTree).toString()).toBe('/project/unsupported-source');
+  });
+
+  it('does not populate coordinates service on rejection', () => {
+    const service = TestBed.inject(UrlSchemeCoordinatesService);
+    service.set(null);
+    runGuard({ url: [seg('evil.example'), seg('foo'), seg('bar')] });
+    expect(service.coordinates()).toBeNull();
   });
 });

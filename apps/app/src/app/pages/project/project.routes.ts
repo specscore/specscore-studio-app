@@ -30,6 +30,13 @@ export default [
     component: ProjectSpecPage,
     data: { title: 'Tests', specDir: 'tests' },
   },
+  // Rejection landing for URLs that fail the canonical URL-scheme contract
+  // (unknown host, path traversal, etc.) — see url-scheme.guard.ts.
+  {
+    path: 'unsupported-source',
+    loadComponent: () =>
+      import('./unsupported-source').then(m => m.UnsupportedSourceComponent),
+  },
   // Canonical path shape per spec/features/studio-url-scheme:
   // /app/project/{git_host}/{org}/{repo}/{path}
   // The matcher accepts 3+ segments; urlSchemeGuard parses and writes the
