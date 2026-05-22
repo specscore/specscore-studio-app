@@ -147,15 +147,12 @@ export class AppMenu implements OnInit {
                 // via startsWith. Children use the same scheme so each level's
                 // isActive check resolves correctly.
                 path: `/${specPath}`,
-                // Command also navigates programmatically because PrimeNG's
-                // AppMenuitem template only binds [routerLink] when the item
-                // has no children — once this Features/Plans/etc. entry has
-                // children loaded, clicking it would otherwise only toggle
-                // expansion. The programmatic nav covers both states.
-                command: () => {
-                    this.loadChildren(specPath, coords);
-                    this.router.navigate([routerLink], { fragment });
-                },
+                // Command triggers lazy child fetch on click. Navigation
+                // itself is handled by the [routerLink] binding in
+                // AppMenuitem's template (which now also fires when the
+                // item has children, so no programmatic router.navigate
+                // is needed here).
+                command: () => this.loadChildren(specPath, coords),
             };
             const subItems = this.buildChildItems(specPath, projectRoot, coords, spec.dir);
             if (subItems && subItems.length > 0) {
@@ -215,13 +212,9 @@ export class AppMenu implements OnInit {
                 // fullPath cascade and activePath comparisons line up across
                 // all levels.
                 path: `/${entry.path}`,
-                // Command navigates programmatically — same reason as the
-                // top-level spec items: AppMenuitem's first template branch
-                // (which fires when hasChildren) doesn't render [routerLink].
-                command: () => {
-                    this.loadChildren(entry.path, coords);
-                    this.router.navigate([routerLink], { fragment });
-                },
+                // Command triggers lazy child fetch on click; navigation is
+                // handled by [routerLink] in AppMenuitem's template.
+                command: () => this.loadChildren(entry.path, coords),
             };
             const grandchildren = this.buildChildItems(entry.path, projectRoot, coords, pageHash);
             if (grandchildren && grandchildren.length > 0) {

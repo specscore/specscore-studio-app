@@ -13,7 +13,19 @@ import { filter } from 'rxjs/operators';
             <div class="layout-menuitem-root-text">{{ item().label }}</div>
         }
         @if ((!hasRouterLink() || hasChildren()) && isVisible()) {
-            <a [attr.href]="item().url" (click)="itemClick($event)" [ngClass]="item().class" [attr.target]="item().target" tabindex="0" pRipple>
+            <a
+                [attr.href]="item().url"
+                (click)="itemClick($event)"
+                [ngClass]="item().class"
+                [attr.target]="item().target"
+                [routerLink]="hasRouterLink() ? item().routerLink : null"
+                routerLinkActive="active-route"
+                [routerLinkActiveOptions]="item().routerLinkActiveOptions || { paths: 'exact', queryParams: 'ignored', matrixParams: 'ignored', fragment: 'ignored' }"
+                [fragment]="item().fragment"
+                [queryParams]="item().queryParams"
+                tabindex="0"
+                pRipple
+            >
                 <i [ngClass]="item().icon" class="layout-menuitem-icon"></i>
                 <span class="layout-menuitem-text">{{ item().label }}</span>
                 @if (item().badge) {
