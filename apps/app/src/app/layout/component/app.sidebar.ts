@@ -65,10 +65,18 @@ export class AppSidebar implements OnInit, OnDestroy {
         this.unbindOutsideClickListener();
     }
 
-    private onRouteChange(path: string) {
+    private onRouteChange(_path: string) {
+        // NOTE: this used to set `activePath: path` (the full router URL).
+        // That competed with AppMenu.syncActivePath which uses a shorter
+        // coord-relative scheme (e.g. "/spec/features/cli" rather than
+        // "/github.com/owner/repo/spec/features/cli"). The two writers
+        // would race on NavigationEnd and AppSidebar always won by virtue
+        // of running second, collapsing the project menu's expansion.
+        // AppMenu.syncActivePath is now the authoritative activePath writer
+        // for project URLs; default menus don't need activePath for
+        // expansion (their root groups always render children).
         this.layoutService.layoutState.update((val) => ({
             ...val,
-            activePath: path,
             overlayMenuActive: false,
             staticMenuMobileActive: false,
             mobileMenuActive: false,

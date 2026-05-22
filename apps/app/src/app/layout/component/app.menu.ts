@@ -94,12 +94,23 @@ export class AppMenu implements OnInit {
      * chain immediately active, so as soon as caches populate, the
      * sub-trees render expanded all the way to the leaf.
      *
+     * Non-contracting: when the new path is a PREFIX of the current
+     * activePath, the current path is kept — this prevents text-click on
+     * an ancestor (e.g. "cli" when the user is on .../cli/idea) from
+     * collapsing the descendant by shrinking the active branch. The
+     * chevron control (toggleClick in AppMenuitem) is the only way to
+     * deliberately contract activePath.
+     *
      * For bare-repo URLs (coords.path === ''), activePath is set to null
      * so no spec sub-tree expands by default.
      */
     private syncActivePath(coords: PathCoordinates) {
-        const activePath = coords.path ? `/${coords.path}` : null;
-        this.layoutService.layoutState.update(val => ({ ...val, activePath }));
+        const newPath = coords.path ? `/${coords.path}` : null;
+        const current = this.layoutService.layoutState().activePath;
+        // Don't contract: if the current activePath is already a descendant
+        // of (or equal to) the new path, keep it.
+        if (current && newPath && current.startsWith(newPath)) return;
+        this.layoutService.layoutState.update(val => ({ ...val, activePath: newPath }));
     }
 
     private buildProjectMenu(coords: PathCoordinates): MenuItem[] {

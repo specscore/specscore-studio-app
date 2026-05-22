@@ -190,6 +190,13 @@ export class AppMenuitem implements OnInit, AfterViewInit {
         if (isRouteActive) {
             const parentPath = this.parentPath();
             if (parentPath) {
+                // Non-contracting: if the current activePath is already a
+                // descendant of (or equal to) parentPath, keep it. Without
+                // this guard, navigating from .../cli/idea/new to .../cli
+                // would fire this on the cli item and collapse the entire
+                // idea sub-tree by setting activePath = Features.fullPath.
+                const current = this.layoutService.layoutState().activePath;
+                if (current && current.startsWith(parentPath)) return;
                 this.layoutService.layoutState.update((val) => ({
                     ...val,
                     activePath: parentPath
@@ -211,15 +218,23 @@ export class AppMenuitem implements OnInit, AfterViewInit {
         }
 
         if (this.hasChildren()) {
-            // Text click ALWAYS expands (never collapses). Collapsing is
-            // reserved for the chevron toggle so users don't accidentally
-            // hide content they just selected. Setting activePath to
-            // fullPath() is idempotent when already expanded.
-            this.layoutService.layoutState.update((val) => ({
-                ...val,
-                activePath: this.fullPath(),
-                menuHoverActive: true
-            }));
+            // Text click ALWAYS expands, NEVER collapses. Non-contracting:
+            // if the current activePath is already a descendant of this
+            // node, keep it (descendants stay expanded). Otherwise set to
+            // this node's fullPath (which expands this node and any
+            // ancestors). The chevron (toggleClick) is the only way to
+            // deliberately collapse.
+            const fullPath = this.fullPath() ?? '';
+            const current = this.layoutService.layoutState().activePath;
+            if (current && current.startsWith(fullPath)) {
+                this.layoutService.layoutState.update((val) => ({ ...val, menuHoverActive: true }));
+            } else {
+                this.layoutService.layoutState.update((val) => ({
+                    ...val,
+                    activePath: fullPath,
+                    menuHoverActive: true
+                }));
+            }
         } else {
             this.layoutService.layoutState.update((val) => ({
                 ...val,
