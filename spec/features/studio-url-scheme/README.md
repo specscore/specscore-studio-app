@@ -20,9 +20,8 @@ Without a single feature owning the URL contract on the Studio side:
 
 - Routes are defined ad hoc inside individual page features (e.g. `project-page` currently declares its own URL shape that conflicts with the decision).
 - Security controls (host allow-list, path validation, `Referrer-Policy`) have no home and risk being implemented inconsistently per-page or skipped entirely.
-- Legacy URLs already in the wild have no documented migration path.
 
-This feature consolidates those concerns so consumers and reviewers have one place to read the contract and one place to enforce it.
+This feature consolidates those concerns so consumers and reviewers have one place to read the contract and one place to enforce it. The pre-canonical `?id=` URL form is dropped without an edge-level migration bridge; existing links must be updated by their authors to the canonical form.
 
 ## Behavior
 
@@ -61,12 +60,6 @@ URLs emitted into committed artifact bodies (by the `specscore` CLI, by AI agent
 #### REQ: ref-inference-client-side
 
 When a request arrives at a canonical route without a `?ref` query parameter AND `document.referrer` resolves to a recognized forge URL whose path encodes a parseable ref (e.g. GitHub `/blob/{ref}/`, GitLab `/-/blob/{ref}/`), Studio MUST infer the ref and replace the URL via `history.replaceState` to include the inferred `?ref`. The inference MUST run client-side only — never as a server-side redirect — so the CDN cache key remains `(URL, query)` without a `Vary: Referer` dependency. When the referrer is absent, opaque (`about:`, `chrome-extension:`, etc.), or from an unrecognized origin, Studio MUST fall back to the default-branch behavior from [REQ: ref-query-param](#req-ref-query-param). The set of recognized forge parsers is extensible; adding a parser is a code change inside the application.
-
-### Legacy redirect
-
-#### REQ: legacy-id-redirect
-
-Studio MUST respond to requests for `/project?id={repo}@{org}@{git_host}` with an HTTP `302` redirect to the equivalent canonical path URL `/app/project/{git_host}/{org}/{repo}` (with no `{path}` segment). The redirect MUST be issued at the edge (Cloudflare Worker) before the SPA bootstrap, so that link unfurlers, OpenGraph scrapers, HTTP-level analytics, and the CDN observe the canonical URL on the response — not the legacy URL. Malformed `id` values that do not parse as three `@`-separated tokens MUST NOT redirect and MUST surface the unsupported-source page from [REQ: unknown-host-rejection](#req-unknown-host-rejection) instead — a malformed legacy URL is treated as an unsupported source, not as a candidate for redirection.
 
 ### Forge host allow-list
 
@@ -122,8 +115,7 @@ apps/app/src/app/
       url-scheme.guard.ts         ← decodes path once, validates per REQ: path-*
       forge-host.allowlist.ts     ← canonical allow-list + IDNA normalization
       referer-ref-inference.ts    ← optional client-side ref inference
-wrangler.jsonc                  ← adds /project* to Worker routes
-worker/index.js                 ← intercepts /project?id=..., issues 302 (per REQ: legacy-id-redirect); appends Referrer-Policy header
+worker/index.js                 ← appends Referrer-Policy header per REQ: referrer-policy-strict-origin
 ```
 
 The `url-scheme.guard.ts` route guard runs before component activation and is the single funnel through which all parsed coordinates flow. Page-level features (e.g. `project-page`) consume the guard's parsed output and MUST NOT redo decoding, allow-list checks, or path validation.
@@ -147,7 +139,6 @@ The `url-scheme.guard.ts` route guard runs before component activation and is th
 | Host not on allow-list | `unsupported-source` component (REQ: unknown-host-rejection) |
 | IDNA-normalized host still not on allow-list (homoglyph attempt) | Same as above |
 | Path traversal / control char / encoded slash | Same as above |
-| Legacy `?id=` value not parseable as `repo@org@host` | Same as above |
 | Default branch resolution fails (e.g. repo not found) | Inline error in the project page per the workspace error-handling rule in `CLAUDE.md` (no silent failures) |
 | Ref inference parser fails on a recognized forge | Fall back to default-branch resolution silently — inference is best-effort |
 
@@ -160,7 +151,6 @@ Per the SpecStudio Rehearse heuristic, every AC in this feature is testable via 
 All ACs are testable. Recommended test surfaces:
 
 - **Route parsing & guard logic** — Jest unit tests against `url-scheme.guard.ts` and `forge-host.allowlist.ts`. Cover allow-list, IDNA normalization, path validation, decoding-once contract.
-- **Legacy redirect** — Jest unit test against the Worker's `fetch` handler with a synthesized `Request` for `/project?id=…`, asserting `Response.status === 302` and the `Location` header (and the malformed-id fall-through), plus a Playwright check against a deployed preview that an old-form URL lands on the canonical form via a real HTTP 302.
 - **Ref query param** — Playwright end-to-end against a fixture project, varying `?ref`.
 - **Ref inference** — Jest unit test against `referer-ref-inference.ts` with synthesized `document.referrer` values; deferred E2E coverage because the ADR marks this v1.1.
 - **Unsupported source** — Playwright check that `/app/project/evil.example/foo/bar` renders the unsupported-source component, not project chrome.
@@ -173,6 +163,7 @@ Rehearse stubs MUST be scaffolded in the plan that implements this feature, one 
 - Handle registration UX, ownership verification (`.well-known/specscore-handle.txt` or OAuth-based), billing integration, and subscription lifecycle. The route shape is reserved; the resolver is a separate feature.
 - Per-feature stable opaque IDs (e.g. `/app/f/{ulid}`). The ADR records this as a future option behind the handle layer; this feature does not introduce it.
 - Server-side rendering or prerendering for OpenGraph / Twitter Card previews. Tracked separately if needed.
+- Edge-level migration of the pre-canonical `/project?id={repo}@{org}@{git_host}` URL form. Existing links in the wild are not redirected; their authors update them to the canonical form. The pre-canonical form is dropped, not bridged.
 - Migration of `/app/p/...` short-form URLs currently emitted by the `specscore` CLI to the canonical `/app/project/...` form. The migration story is a producer-side concern and belongs in the CLI's own plan.
 
 ## Dependencies
@@ -195,20 +186,6 @@ Scenario: a handle URL is recognized and parsed
 **Given** Studio is loaded
 **When** the user navigates to `/app/project/~acme/platform/spec/features/login.md`
 **Then** the route guard parses `{handle: "acme", project_slug: "platform", path: "spec/features/login.md"}` and dispatches to the (future) handle resolver; no error chrome is rendered for the route shape itself
-
-### AC: legacy-id-redirects (verifies REQ:legacy-id-redirect)
-
-Scenario: an old-form URL redirects via HTTP 302 to the canonical path
-**Given** Studio is deployed
-**When** an HTTP client (browser, link unfurler, scraper) requests `/project?id=specscore@specscore@github.com`
-**Then** the response is an HTTP `302` whose `Location` header is `/app/project/github.com/specscore/specscore`, and a subsequent request to that canonical URL renders the project page
-
-### AC: legacy-id-malformed-rejected (verifies REQ:legacy-id-redirect)
-
-Scenario: a malformed legacy id is rejected, not redirected
-**Given** Studio is deployed
-**When** a client requests `/project?id=not-a-valid-id`
-**Then** the response is not a 302; Studio serves the SPA which renders the `unsupported-source` component
 
 ### AC: ref-pins-to-branch (verifies REQ:ref-query-param)
 
@@ -320,7 +297,7 @@ Scenario: a handle segment containing a dot is rejected by the route parser
 - Should ref inference (REQ: ref-inference-client-side) ship in v1 or be deferred to v1.1 as the ADR suggests? The current REQ uses MAY to permit either; the plan should decide.
 - The `/app/p/` short form currently emitted by the `specscore` CLI into spec files must reconcile with the chosen `/app/project/` canonical. Migration is producer-side and is not solved here; flagging so it is not forgotten.
 - Forge allow-list maintenance: where does the canonical list live (constant in code today; `specscore.yaml` extension in the future)? Decide before the second forge is added.
-- Open-redirect UX wording on the legacy `/project?id=…` route: the behavior is resolved (malformed or non-allow-listed inputs route to `unsupported-source` via REQ:legacy-id-redirect + AC:legacy-id-malformed-rejected). Only the UX copy on the unsupported-source page needs review before launch so it does not read as a Studio bug.
+- UX copy on the unsupported-source page: the component is intentionally generic in this revision; finalize the wording before the v1 launch so it doesn't read as a Studio bug to a user who hit a bad URL.
 
 ---
 *This document follows the https://specscore.md/feature-specification*

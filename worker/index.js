@@ -40,45 +40,10 @@ function withSecurityHeaders(response) {
   });
 }
 
-/**
- * Parse a legacy `?id={repo}@{org}@{git_host}` value into its three tokens.
- * Returns null when the input is missing, doesn't contain exactly three
- * @-separated tokens, or any token is empty. Per REQ:legacy-id-redirect.
- */
-function parseLegacyId(id) {
-  if (!id) return null;
-  const tokens = id.split('@');
-  if (tokens.length !== 3) return null;
-  const [repo, org, git_host] = tokens;
-  if (!repo || !org || !git_host) return null;
-  return { repo, org, git_host };
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const original = url.pathname;
-
-    // Legacy URL handling (REQ:legacy-id-redirect). MUST run before the
-    // /app/ asset logic so the 302 is emitted at the edge — before the SPA
-    // bootstrap — so link unfurlers, OG scrapers, and the CDN observe the
-    // canonical URL on the response.
-    if (original === '/project') {
-      const parsed = parseLegacyId(url.searchParams.get('id'));
-      if (parsed) {
-        const location = `/app/project/${parsed.git_host}/${parsed.org}/${parsed.repo}`;
-        return withSecurityHeaders(
-          new Response(null, { status: 302, headers: { Location: location } }),
-        );
-      }
-      // Malformed id (missing, wrong token count, empty tokens): per
-      // AC:legacy-id-malformed-rejected, do NOT redirect. Fall through to
-      // the SPA fallback so UnsupportedSourceComponent renders client-side.
-      const indexUrl = new URL(request.url);
-      indexUrl.pathname = '/index.html';
-      const fallback = await env.ASSETS.fetch(new Request(indexUrl, request));
-      return withSecurityHeaders(fallback);
-    }
 
     // Strip /app prefix for asset lookup. The exact `/app` and `/app/` cases
     // become the app's index.html directly.
