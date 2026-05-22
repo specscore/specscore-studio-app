@@ -3,6 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { AuthService } from '@/app/core/services/auth.service';
 import { GitHubService, GitHubApiError } from '@/app/core/services/github.service';
+import { UrlSchemeCoordinatesService } from '@/app/core/routing/url-scheme.guard';
 
 type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error';
 
@@ -64,6 +65,7 @@ export class ProjectPage {
   private readonly route = inject(ActivatedRoute);
   private readonly authService = inject(AuthService);
   private readonly githubService = inject(GitHubService);
+  private readonly urlScheme = inject(UrlSchemeCoordinatesService);
 
   state = signal<PageState>('loading');
   readmeHtml = signal('');
@@ -86,6 +88,17 @@ export class ProjectPage {
   private init() {
     if (!this.authService.isAuthenticated()) {
       this.state.set('not_authenticated');
+      return;
+    }
+
+    // Prefer the canonical URL-scheme coordinates set by urlSchemeGuard
+    // (Task 1 of plan studio-url-scheme). Fall back to the legacy `?id=`
+    // query-param shape for URLs still in the wild (e.g. /app/project?id=...).
+    const coords = this.urlScheme.coordinates();
+    if (coords && coords.kind === 'path') {
+      this.owner = coords.org;
+      this.repo = coords.repo;
+      this.loadReadme(false);
       return;
     }
 
