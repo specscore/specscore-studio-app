@@ -1,6 +1,11 @@
 import { Routes } from '@angular/router';
 import { AppLayout } from './layout/component/app.layout';
 import { AppHeaderLayout } from './layout/component/app.header-layout';
+import {
+  canonicalPathMatcher,
+  handlePathMatcher,
+  urlSchemeGuard,
+} from './core/routing/url-scheme.guard';
 
 export const appRoutes: Routes = [
     {
@@ -15,10 +20,33 @@ export const appRoutes: Routes = [
         component: AppLayout,
         children: [
             { path: 'prime-demos', loadChildren: () => import('./pages/prime-demos/prime-demos.routes') },
+            // Unsupported-source landing — REQ:unknown-host-rejection target.
+            // The literal sits BEFORE the canonical matcher so the matcher
+            // (which requires segment 0 to contain `.`) can't shadow it; the
+            // explicit literal is still clearer than relying on the dispatch
+            // rule alone.
             {
-                path: 'project',
-                loadChildren: () => import('./pages/project/project.routes')
-            }
+                path: 'unsupported-source',
+                loadComponent: () =>
+                    import('./pages/project/unsupported-source').then(m => m.UnsupportedSourceComponent),
+            },
+            // Canonical handle shape per studio-url-scheme:
+            // /app/~{handle}[/{path}]
+            // Declared before the path matcher so `~`-prefixed URLs dispatch here.
+            {
+                matcher: handlePathMatcher,
+                canActivate: [urlSchemeGuard],
+                loadComponent: () => import('./pages/project/project-page').then(m => m.ProjectPage),
+            },
+            // Canonical path shape per studio-url-scheme:
+            // /app/{git_host}/{org}/{repo}[/{path}]
+            // The matcher accepts 3+ segments and requires segment 0 to contain `.`
+            // (REQ:first-segment-dispatch); urlSchemeGuard parses and validates.
+            {
+                matcher: canonicalPathMatcher,
+                canActivate: [urlSchemeGuard],
+                loadComponent: () => import('./pages/project/project-page').then(m => m.ProjectPage),
+            },
         ]
     },
     { path: 'landing', loadComponent: () => import('./pages/landing/landing').then(m => m.Landing) },
