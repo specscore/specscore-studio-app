@@ -1,16 +1,22 @@
 import { Component, ViewEncapsulation, inject, signal, effect } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { AuthService } from '@/app/core/services/auth.service';
 import { GitHubService, GitHubApiError } from '@/app/core/services/github.service';
+import { UrlSchemeCoordinatesService } from '@/app/core/routing/url-scheme.guard';
+import { inferRefFromReferrer } from '@/app/core/routing/referer-ref-inference';
 
-type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error';
+type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error' | 'handle_unresolved';
 
 @Component({
   selector: 'app-project-page',
   standalone: true,
   imports: [ButtonModule],
   encapsulation: ViewEncapsulation.None,
+  // data-op exposes the Studio operation mode in a way that's observable from
+  // Playwright/CSS without coupling to internal state — see
+  // REQ:op-query-param and AC:op-routes-to-operation. Default 'read' when
+  // ?op is absent.
+  host: { '[attr.data-op]': 'op()' },
   template: `
     @switch (state()) {
       @case ('not_authenticated') {
@@ -46,6 +52,19 @@ type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error';
           <div class="markdown-body" [innerHTML]="readmeHtml()"></div>
         </div>
       }
+      @case ('handle_unresolved') {
+        <div class="card" data-testid="handle-unresolved">
+          <div class="flex flex-col items-center gap-4 p-8 text-center">
+            <i class="pi pi-at text-4xl text-muted-color"></i>
+            <p class="text-xl font-semibold m-0">{{ handleLabel() }}</p>
+            <p class="text-muted-color m-0">
+              Handle resolution is coming soon. The handle namespace is
+              reserved in the URL contract; mapping handles to forge
+              repositories will arrive in a follow-up feature.
+            </p>
+          </div>
+        </div>
+      }
     }
   `,
   styles: [`
@@ -61,17 +80,22 @@ type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error';
   `]
 })
 export class ProjectPage {
-  private readonly route = inject(ActivatedRoute);
   private readonly authService = inject(AuthService);
   private readonly githubService = inject(GitHubService);
+  private readonly urlScheme = inject(UrlSchemeCoordinatesService);
 
   state = signal<PageState>('loading');
   readmeHtml = signal('');
   errorMessage = signal('');
   refreshing = signal(false);
+  handleLabel = signal('');
+  /** Current operation mode (e.g. 'read', 'explore', 'edit'). Exposed on
+   *  the host element as data-op for observable mode-switching per AC. */
+  op = signal<string>('read');
 
   private owner = '';
   private repo = '';
+  private ref: string | undefined;
   private loaded = false;
 
   constructor() {
@@ -89,23 +113,37 @@ export class ProjectPage {
       return;
     }
 
-    const id = this.route.snapshot.queryParamMap.get('id');
-    if (!id) {
+    // ProjectPage consumes parsed coordinates produced by urlSchemeGuard
+    // (plan studio-url-scheme). The canonical URL contract is the only
+    // supported input — no legacy `?id=` fallback exists.
+    const coords = this.urlScheme.coordinates();
+    if (!coords) {
+      // Reaching the page without coordinates means routing was misconfigured
+      // (guard didn't run). Surface, don't swallow.
       this.state.set('error');
-      this.errorMessage.set('No project ID provided.');
+      this.errorMessage.set('This page must be opened from a canonical project URL.');
       return;
     }
 
-    const parsed = this.parseProjectId(id);
-    if (!parsed) {
-      this.state.set('error');
-      this.errorMessage.set('Invalid project ID format.');
+    // Reflect ?op as the host's data-op attribute — even on the
+    // handle-unresolved branch — so AC:op-routes-to-operation is observable
+    // regardless of which shape the URL took.
+    this.op.set(coords.op ?? 'read');
+
+    if (coords.kind === 'path') {
+      this.owner = coords.org;
+      this.repo = coords.repo;
+      this.ref = coords.ref ?? this.inferAndPersistRef();
+      this.loadReadme(false);
       return;
     }
 
-    this.owner = parsed.owner;
-    this.repo = parsed.repo;
-    this.loadReadme(false);
+    // Handle shape: the URL contract reserves it per REQ:handle-canonical-route
+    // but resolution to a concrete forge repository is a future feature. AC
+    // requires "no error chrome" for the parsed shape itself, so we render a
+    // neutral "coming soon" panel rather than the error state.
+    this.handleLabel.set(`~${coords.handle}/${coords.project_slug}`);
+    this.state.set('handle_unresolved');
   }
 
   refreshReadme() {
@@ -119,8 +157,26 @@ export class ProjectPage {
     this.init();
   }
 
+  /**
+   * Run Referer-based ref inference (REQ:ref-inference-client-side) once on
+   * bootstrap when the route had no explicit ?ref. On success, push the
+   * inferred ref into the URL via history.replaceState so a refresh or
+   * share preserves the resolved revision. Best-effort — returns undefined
+   * (and does NOT touch the URL) when the referrer is absent, opaque, or
+   * from an unrecognized forge.
+   */
+  private inferAndPersistRef(): string | undefined {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+    const inferred = inferRefFromReferrer(document.referrer);
+    if (!inferred) return undefined;
+    const url = new URL(window.location.href);
+    url.searchParams.set('ref', inferred);
+    window.history.replaceState(window.history.state, '', url.toString());
+    return inferred;
+  }
+
   private loadReadme(skipCache: boolean) {
-    this.githubService.fetchReadmeHtml(this.owner, this.repo, skipCache).subscribe({
+    this.githubService.fetchReadmeHtml(this.owner, this.repo, skipCache, this.ref).subscribe({
       next: (html) => {
         this.readmeHtml.set(html);
         this.state.set('loaded');
@@ -136,11 +192,5 @@ export class ProjectPage {
         this.refreshing.set(false);
       },
     });
-  }
-
-  private parseProjectId(id: string): { owner: string; repo: string } | null {
-    const match = id.match(/^([^@]+)@([^@]+)@([^@]+)$/);
-    if (!match) return null;
-    return { owner: match[2], repo: match[1] };
   }
 }

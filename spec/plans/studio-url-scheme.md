@@ -8,11 +8,13 @@
 
 ## Summary
 
-Implements the canonical Studio URL contract on the studio-app side per the approved [studio-url-scheme](../features/studio-url-scheme/README.md) Feature, which in turn implements ADR [D-0001 — Studio Deep-Link URL Scheme](https://specscore.studio/app/project/github.com/specscore/specscore/spec/decisions/0001-studio-url-scheme.md). The plan decomposes the URL contract into ten tasks: a route-guard core, the security pipeline (allow-list, path validation, hardcoded fetch base), handle-namespace parsing, query parameters, response headers, the legacy HTTP 302 redirect, Referer-based ref inference, and a cross-repo handoff for the one producer-side AC.
+Implements the canonical Studio URL contract on the studio-app side per the approved [studio-url-scheme](../features/studio-url-scheme/README.md) Feature, which in turn implements ADR [D-0001 — Studio Deep-Link URL Scheme](https://specscore.studio/app/project/github.com/specscore/specscore/spec/decisions/0001-studio-url-scheme.md). The plan decomposes the URL contract into nine tasks: a route-guard core, the security pipeline (allow-list, path validation, hardcoded fetch base), handle-namespace parsing, query parameters, response headers, Referer-based ref inference, and a cross-repo handoff for the one producer-side AC.
 
 ## Approach
 
-Tasks are grouped by the surface they touch. Tasks 1–5 build out the Angular `url-scheme.guard.ts` incrementally — scaffolding first, then layering in allow-list, path validation, handle parsing, and query-parameter extraction — so each intermediate step is independently testable. Task 6 isolates the outbound-fetch boundary that the guard hands off to. Tasks 7 and 8 are Cloudflare Worker concerns kept separate because they ship via `wrangler.jsonc` + `worker/index.js` rather than the Angular application bundle. Task 9 (Referer-based ref inference) lands last per the Feature's Outstanding Questions sequencing note, so v1 can validate against real referrer data before extending the parser set. Task 10 is a tracking/handoff record for the one AC whose enforcement lives in the `specscore` CLI in another repo.
+Tasks are grouped by the surface they touch. Tasks 1–5 build out the Angular `url-scheme.guard.ts` incrementally — scaffolding first, then layering in allow-list, path validation, handle parsing, and query-parameter extraction — so each intermediate step is independently testable. Task 6 isolates the outbound-fetch boundary that the guard hands off to. Task 7 is a Cloudflare Worker concern kept separate because it ships via `worker/index.js` rather than the Angular application bundle. Task 8 (Referer-based ref inference) lands last per the Feature's Outstanding Questions sequencing note, so v1 can validate against real referrer data before extending the parser set. Task 9 is a tracking/handoff record for the one AC whose enforcement lives in the `specscore` CLI in another repo.
+
+The pre-canonical `/project?id={repo}@{org}@{git_host}` URL form is dropped without an edge-level migration bridge — see the Feature's Not Doing / Out of Scope section. Existing links must be updated by their authors.
 
 ## Tasks
 
@@ -58,28 +60,22 @@ Add `apps/app/src/app/core/routing/forge-api-base.ts` exporting `forgeApiBase(ho
 
 Studio-app is served by a Cloudflare Worker (`worker/index.js`, configured in `wrangler.jsonc`). Extend the existing `fetch` handler so every response it returns carries `Referrer-Policy: strict-origin`. The simplest implementation is to clone the asset response and append the header via `new Response(body, { ...init, headers: { ..., 'Referrer-Policy': 'strict-origin' } })` before returning. Apply uniformly — the canonical `/app/project/...` routes, the SPA fallback `index.html`, and static asset responses must all carry the header. Verify via a Playwright or curl-based assertion in CI that the header appears on responses for `/app`, `/app/project/github.com/...`, and a static asset.
 
-### Task 8: Legacy 302 redirect in the Cloudflare Worker
-
-**Verifies:** studio-url-scheme#ac:legacy-id-redirects, studio-url-scheme#ac:legacy-id-malformed-rejected
-
-Extend the Worker to handle the legacy URL. Step 1: add `specscore.studio/project*` to the `routes` array in `wrangler.jsonc` so requests to that path reach the Worker. Step 2: at the top of the `fetch` handler, before the existing `/app/` asset logic, detect `url.pathname === '/project'` with an `id` query parameter; parse the value as exactly three `@`-separated tokens `{repo}@{org}@{git_host}`; on a valid parse, return `new Response(null, { status: 302, headers: { Location: \`/app/project/${git_host}/${org}/${repo}\` } })`. On a malformed `id` (missing, wrong token count, empty tokens), do NOT redirect — fall through to the SPA fallback so `UnsupportedSourceComponent` renders client-side. Validate end-to-end with a Playwright test that issues a non-following HTTP request against a deployed preview and asserts the 302 + `Location` header for a valid id, and a 200 + SPA HTML for a malformed id.
-
-### Task 9: Client-side Referer-based ref inference (GitHub parser)
+### Task 8: Client-side Referer-based ref inference (GitHub parser)
 
 **Verifies:** studio-url-scheme#ac:ref-inferred-from-referrer, studio-url-scheme#ac:ref-inference-fallback-head
 
 Add `apps/app/src/app/core/routing/referer-ref-inference.ts` with an initial GitHub parser for `https://github.com/{owner}/{repo}/blob/{ref}/{path}`. On project-page bootstrap, when the route has no `?ref` query parameter AND `document.referrer` matches a registered parser AND the parser yields a non-empty ref, call `history.replaceState` to push the resolved `?ref` into the URL. When the referrer is absent, opaque, or unrecognized, do nothing — the route's existing default-branch behavior from Task 5 takes over. Add unit tests covering: (a) known-forge match → replaceState called with correct ref; (b) absent referrer → no replaceState, no `?ref`. GitLab, Bitbucket, and Codeberg parsers can ship as separate follow-ups; the registry is designed to accept additions without touching the consumer.
 
-### Task 10: Cross-repo handoff for producer-side AC
+### Task 9: Cross-repo handoff for producer-side AC
 
 **Verifies:** studio-url-scheme#ac:artifact-url-emits-without-ref
 
-This AC is producer-side: the `specscore` CLI (in [`specscore/specscore-cli`](https://github.com/specscore/specscore-cli), with format/spec source of truth in the `specscore` repo) is the artifact author that must not emit `?ref=` into committed spec files. Studio-app cannot enforce it at runtime — Studio only observes the contract via ref-less URLs in committed artifacts. The task is satisfied when a sibling plan exists in the `specscore` repo that owns this AC end-to-end (a CLI URL-emitter Feature + Plan authored via `specstudio:specify` and `specstudio:plan` in that repo). This task can proceed in parallel with Tasks 1–9 and is the explicit tracking record of the cross-repo dependency.
+This AC is producer-side: the `specscore` CLI (in [`specscore/specscore-cli`](https://github.com/specscore/specscore-cli), with format/spec source of truth in the `specscore` repo) is the artifact author that must not emit `?ref=` into committed spec files. Studio-app cannot enforce it at runtime — Studio only observes the contract via ref-less URLs in committed artifacts. The task is satisfied when a sibling plan exists in the `specscore` repo that owns this AC end-to-end (a CLI URL-emitter Feature + Plan authored via `specstudio:specify` and `specstudio:plan` in that repo). This task can proceed in parallel with Tasks 1–8 and is the explicit tracking record of the cross-repo dependency.
 
 ## Open Questions
 
 - UX copy on `UnsupportedSourceComponent` is intentionally generic in Task 2; finalize wording before the v1 launch (Feature's existing Outstanding Question on this).
-- GitLab/Bitbucket/Codeberg ref-inference parsers in Task 9: ship as follow-up tasks under this plan (revise-in-place) or under a v1.1 plan? Either is fine; resolve when v1 lands.
+- GitLab/Bitbucket/Codeberg ref-inference parsers in Task 8: ship as follow-up tasks under this plan (revise-in-place) or under a v1.1 plan? Either is fine; resolve when v1 lands.
 - Cloudflare zone-level Transform Rules could alternatively emit `Referrer-Policy` for the entire `specscore.studio` zone (Task 7) without Worker code. The Worker approach keeps the rule colocated with the app and easy to grep; the zone-level rule covers all subpaths (including the Astro marketing site) uniformly. Pick at implementation time.
 
 ---
