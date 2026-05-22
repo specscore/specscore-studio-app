@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { MenuItem } from 'primeng/api';
 import { AppMenuitem } from './app.menuitem';
-import { GitHubService } from '@/app/core/services/github.service';
+import { GitHubDirectoryEntry, GitHubService } from '@/app/core/services/github.service';
 import { LayoutService } from '@/app/layout/service/layout.service';
 import {
     PathCoordinates,
@@ -33,7 +33,15 @@ export class AppMenu implements OnInit {
 
     readonly model = signal<MenuItem[]>([]);
 
-    private specChildrenCache = new Map<string, MenuItem[]>();
+    /**
+     * Cache of raw directory entries keyed by directory path
+     * (e.g. "spec/features", "spec/features/cli"). MenuItems are rebuilt
+     * recursively from this cache on every menu render so a newly-arrived
+     * deeper cache entry (e.g. spec/features/cli's children loaded after
+     * spec/features's children) propagates up the tree without needing to
+     * re-fetch the parent.
+     */
+    private specChildrenCache = new Map<string, GitHubDirectoryEntry[]>();
     private loadingPaths = new Set<string>();
     private lastProjectKey: string | null = null;
 
@@ -91,7 +99,6 @@ export class AppMenu implements OnInit {
         const specItems: MenuItem[] = specTypes.map(spec => {
             const specPath = `spec/${spec.dir}`;
             const routerLink = `${projectRoot}/${specPath}`;
-            const cached = this.specChildrenCache.get(specPath);
             const item: MenuItem & { path: string } = {
                 label: spec.label,
                 icon: spec.icon,
@@ -101,10 +108,11 @@ export class AppMenu implements OnInit {
                 routerLink: [routerLink],
                 fragment: `page=${spec.dir}`,
                 path: `/spec-${spec.dir}`,
-                command: () => this.loadChildren(specPath, projectRoot, coords, spec.dir),
+                command: () => this.loadChildren(specPath, coords),
             };
-            if (cached && cached.length > 0) {
-                item.items = cached;
+            const subItems = this.buildChildItems(specPath, projectRoot, coords, spec.dir);
+            if (subItems && subItems.length > 0) {
+                item.items = subItems;
             }
             return item;
         });
@@ -116,7 +124,7 @@ export class AppMenu implements OnInit {
         // loadChildren for each directory level so the tree populates on
         // the next render. Each fetch is idempotent (cached); already-loaded
         // levels short-circuit immediately.
-        this.expandForCurrentPath(coords, projectRoot, specTypes);
+        this.expandForCurrentPath(coords, specTypes);
 
         return [
             {
@@ -133,19 +141,53 @@ export class AppMenu implements OnInit {
     }
 
     /**
+     * Recursively build MenuItems for the directory at dirPath from the raw
+     * entries cache. Returns undefined when the cache has no entry for
+     * dirPath (not yet loaded). Returns [] when the cache has an empty
+     * directory entry. For each cached entry, recursively look up sub-cache
+     * so nested directories that were loaded after their parent still
+     * appear in the tree.
+     */
+    private buildChildItems(
+        dirPath: string,
+        projectRoot: string,
+        coords: PathCoordinates,
+        pageHash: string,
+    ): MenuItem[] | undefined {
+        const entries = this.specChildrenCache.get(dirPath);
+        if (!entries) return undefined;
+        return entries.map(entry => {
+            const routerLink = `${projectRoot}/${entry.path}`;
+            const childItem: MenuItem & { path: string } = {
+                label: entry.name,
+                icon: 'pi pi-fw pi-folder',
+                routerLink: [routerLink],
+                fragment: `page=${pageHash}`,
+                path: `/spec-${entry.path}`,
+                command: () => this.loadChildren(entry.path, coords),
+            };
+            const grandchildren = this.buildChildItems(entry.path, projectRoot, coords, pageHash);
+            if (grandchildren && grandchildren.length > 0) {
+                childItem.items = grandchildren;
+            }
+            return childItem;
+        });
+    }
+
+    /**
      * Walk the current URL path (`coords.path`) and trigger loadChildren for
      * each spec sub-directory level so deep links auto-expand the tree
      * without requiring the user to click each menu item. Idempotent per
      * directory — already-cached levels short-circuit inside loadChildren.
      *
-     * Example: coords.path = "spec/features/cli/spec/init" triggers
-     * loadChildren for "spec/features" → "spec/features/cli" →
-     * "spec/features/cli/spec" so PrimeNG can expand each level and
-     * highlight "init" as active.
+     * Loads EVERY prefix from spec/{topDir} through coords.path INCLUSIVE
+     * so the leaf's children (if any) are also fetched — important when a
+     * user deep-links into a directory that itself has sub-directories
+     * (e.g. /spec/features/cli has its own sub-features that should show
+     * inside the cli node when it's the active leaf).
      */
     private expandForCurrentPath(
         coords: PathCoordinates,
-        projectRoot: string,
         specTypes: readonly { dir: string }[],
     ) {
         if (!coords.path.startsWith('spec/')) return;
@@ -154,55 +196,36 @@ export class AppMenu implements OnInit {
         const topDir = segments[1];
         const matchingSpec = specTypes.find(s => s.dir === topDir);
         if (!matchingSpec) return;
-        // Load every prefix from spec/{topDir} up to (but not including) the
-        // final segment — the final segment is the active leaf, no children
-        // needed beneath it for highlight purposes.
         for (let depth = 2; depth <= segments.length; depth++) {
             const prefixPath = segments.slice(0, depth).join('/');
-            if (prefixPath === coords.path) break;
-            this.loadChildren(prefixPath, projectRoot, coords, matchingSpec.dir);
-        }
-        // Also ensure the top-level spec directory itself is loaded, even if
-        // coords.path === "spec/features" (no further segments).
-        const topPath = `spec/${topDir}`;
-        if (!this.specChildrenCache.has(topPath)) {
-            this.loadChildren(topPath, projectRoot, coords, matchingSpec.dir);
+            this.loadChildren(prefixPath, coords);
         }
     }
 
     /**
      * On-demand load child directories under a spec root (e.g. each feature
-     * under spec/features/). Used to populate the menu's expandable tree
-     * when a top-level spec category is opened. Sub-items link to the
-     * canonical URL for that nested directory and carry the same
-     * #page=<spec-category> hash for left-nav highlight consistency.
+     * under spec/features/). Idempotent: short-circuits when the directory's
+     * entries are already cached or a fetch is in flight. On success, stores
+     * RAW entries in the cache (not MenuItems) and triggers updateMenu() so
+     * the tree rebuilds with the new level included. MenuItem construction
+     * happens in buildChildItems on each render — that way a deeper cache
+     * arriving later propagates up automatically.
      */
-    private loadChildren(dirPath: string, projectRoot: string, coords: PathCoordinates, pageHash: string) {
+    private loadChildren(dirPath: string, coords: PathCoordinates) {
         if (this.specChildrenCache.has(dirPath) || this.loadingPaths.has(dirPath)) return;
 
         this.loadingPaths.add(dirPath);
         this.githubService.fetchDirectoryContents(coords.org, coords.repo, dirPath).subscribe({
             next: (entries) => {
                 this.loadingPaths.delete(dirPath);
-                const children: MenuItem[] = entries.map(entry => {
-                    const routerLink = `${projectRoot}/${entry.path}`;
-                    const childItem: MenuItem & { path: string } = {
-                        label: entry.name,
-                        icon: 'pi pi-fw pi-folder',
-                        routerLink: [routerLink],
-                        fragment: `page=${pageHash}`,
-                        path: `/spec-${entry.path}`,
-                        command: () => this.loadChildren(entry.path, projectRoot, coords, pageHash),
-                    };
-                    const childCached = this.specChildrenCache.get(entry.path);
-                    if (childCached && childCached.length > 0) {
-                        childItem.items = childCached;
-                    }
-                    return childItem;
-                });
-                this.specChildrenCache.set(dirPath, children);
+                this.specChildrenCache.set(dirPath, entries);
                 this.updateMenu();
-                if (children.length > 0) {
+                if (entries.length > 0) {
+                    // Hint the layout's activePath in case PrimeNG's
+                    // routerLinkActive cascade doesn't fully drive expansion.
+                    // The key here mirrors child items' path scheme
+                    // (`/spec-<entry.path>`), so when activePath is set to
+                    // a leaf, the parent chain's isActive checks succeed.
                     const pathKey = `/spec-${dirPath}`;
                     this.layoutService.layoutState.update(val => ({
                         ...val,
