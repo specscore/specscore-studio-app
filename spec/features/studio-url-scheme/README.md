@@ -1,6 +1,6 @@
 # Feature: Studio URL Scheme
 
-> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=explore) | [Edit](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=edit) | [Ask question](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=ask) | [Request change](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=request-change) |
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=explore) | [Edit](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=edit) | [Ask question](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=ask) | [Request change](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/studio-url-scheme?op=request-change) |
 
 **Status:** Approved
 **Date:** 2026-05-22
@@ -14,7 +14,7 @@ The Studio URL Scheme defines the canonical deep-link URLs that point from SpecS
 
 ## Problem
 
-SpecScore artifacts are committed to consumer repositories and reference Studio via long-lived URLs. Today there is contractual drift: the `specscore` repo's documentation and CLI emit a path-style URL while the Studio web app implements a different query-parameter URL with reverse-order, `@`-separated identifiers. Neither side honors the `~handle` shape, the ref-as-query-parameter contract, or the forge-host allow-list that the cross-project [Studio URL Scheme decision (D-0001)](https://specscore.studio/app/project/github.com/specscore/specscore/spec/decisions/0001-studio-url-scheme.md) ratified.
+SpecScore artifacts are committed to consumer repositories and reference Studio via long-lived URLs. Today there is contractual drift: the `specscore` repo's documentation and CLI emit a path-style URL while the Studio web app implements a different query-parameter URL with reverse-order, `@`-separated identifiers. Neither side honors the `~handle` shape, the ref-as-query-parameter contract, or the forge-host allow-list that the cross-project [Studio URL Scheme decision (D-0001)](https://specscore.studio/app/github.com/specscore/specscore/spec/decisions/0001-studio-url-scheme.md) ratified.
 
 Without a single feature owning the URL contract on the Studio side:
 
@@ -31,15 +31,26 @@ Studio exposes two route shapes that resolve to the same project surface. Both s
 
 #### REQ: path-canonical-route
 
-Studio MUST resolve URLs of the form `/app/project/{git_host}/{org}/{repo}/{path}` to the project page for the addressed artifact. Path segments are positional: segment 1 is `{git_host}`, segment 2 is `{org}`, segment 3 is `{repo}`, segments 4 and onward (joined by `/`) are `{path}`. The trailing `{path}` MAY be empty, in which case the route resolves to the project root.
+Studio MUST resolve URLs of the form `/app/{git_host}/{org}/{repo}/{path}` to the project page for the addressed artifact. Path segments are positional: segment 1 is `{git_host}`, segment 2 is `{org}`, segment 3 is `{repo}`, segments 4 and onward (joined by `/`) are `{path}`. The trailing `{path}` MAY be empty, in which case the route resolves to the project root.
 
 #### REQ: handle-canonical-route
 
-Studio MUST resolve URLs of the form `/app/project/~{handle}/{project-slug}/{path}` to the project page identified by the `{handle}` namespace and `{project-slug}`. The leading `~` is mandatory and signals a handle namespace. Handle resolution to the underlying forge repository is out of scope for this feature; this requirement only reserves the route shape and parses the segments.
+Studio MUST recognize URLs of the form `/app/~{handle}[/{path}]` as a reserved handle-namespace shape. The leading `~` is mandatory and signals a handle namespace. **Handle resolution to the underlying forge repository is out of scope for this Feature** — MVP renders a placeholder; a future handle-namespace Feature defines registration, ownership verification, and the eventual resolver. This requirement only reserves the route shape so future handle URLs can land cleanly. The multi-segment `~{handle}/{project-slug}` form from the original draft was reduced to single-segment `~{handle}` per [D-0001's Declined Alternatives](https://specscore.studio/app/github.com/specscore/specscore/spec/decisions/0001-studio-url-scheme.md): slug grammar is deferred to the resolver Feature.
+
+#### REQ: first-segment-dispatch
+
+Studio's router MUST dispatch on the first path segment after `/app/` using a structural distinguisher per [D-0001](https://specscore.studio/app/github.com/specscore/specscore/spec/decisions/0001-studio-url-scheme.md):
+
+- Segment contains `.` → forge canonical scheme (REQ:path-canonical-route).
+- Segment starts with `~` → handle namespace (REQ:handle-canonical-route).
+- Segment matches a registered app-route literal (e.g. `landing`, `auth`, `settings`, `unsupported-source`) → that app page.
+- Otherwise → 404.
+
+This rule eliminates the literal-vs-canonical collision that an intermediate `/app/project/` shape produced (the canonical matcher being shadowed by literal Studio sub-routes). The dispatcher MUST enforce two forever constraints inherited from D-0001: no forge host on the allow-list may lack a `.` (see REQ:host-allowlist), and no app-route literal may contain a `.`.
 
 #### REQ: app-prefix-required
 
-Both canonical routes MUST live under the `/app/` path prefix. The prefix is required so the Progressive Web App service worker registered for `/app/sw.js` claims only the application surface and not the apex marketing site.
+The canonical routes MUST live under the `/app/` path prefix. The prefix is required so the Progressive Web App service worker registered for `/app/sw.js` claims only the application surface and not the apex marketing site.
 
 ### Query parameters
 
@@ -50,6 +61,12 @@ Studio MUST treat `?ref={branch|tag|sha}` as the contractual mechanism for pinni
 #### REQ: op-query-param
 
 Studio MUST reserve `?op={operation}` for Studio operations on the addressed artifact (initial set: `explore`, `edit`, `ask`, `request-change`). The set is extensible. `?op` is orthogonal to `?ref`; both MAY appear in the same URL.
+
+#### REQ: page-view-hash
+
+Studio MUST reserve `#page={view}` as the URL fragment for in-page view state on **directory URLs** (initial set: `features`, `plans`, `architecture`, `tests`). The hash is client-only — it never reaches the server, never participates in the CDN cache key, and never appears in server logs. This is the correct surface for view state because losing it on unfurl produces sensible default-view behavior, not broken behavior (cf. GitHub's `#L42` line-highlight). `#page=` MUST NOT appear on file URLs; `#tab=…` is reserved for future file-view state.
+
+The `?op=` and `#page=` value sets MUST be disjoint per [D-0001 Rule 7](https://specscore.studio/app/github.com/specscore/specscore/spec/decisions/0001-studio-url-scheme.md): the verb set (`explore`, `edit`, `ask`, `request-change`, …) and the view set (`features`, `plans`, `architecture`, `tests`, …) MUST NOT share any value. Lint MUST enforce this — `?op=` accepts only the verb set, `#page=` accepts only the view set.
 
 #### REQ: artifact-urls-omit-ref-by-default
 
@@ -65,7 +82,7 @@ When a request arrives at a canonical route without a `?ref` query parameter AND
 
 #### REQ: host-allowlist
 
-Studio MUST treat `{git_host}` as untrusted input. Only hosts on a maintained allow-list (initial set: `github.com`, `gitlab.com`, `bitbucket.org`, `codeberg.org`) resolve to the normal project page. The allow-list lives in the application source — not in route configuration — so additions require code review.
+Studio MUST treat `{git_host}` as untrusted input. Only hosts on a maintained allow-list (initial set: `github.com`, `gitlab.com`, `bitbucket.org`, `codeberg.org`) resolve to the normal project page. The allow-list lives in the application source — not in route configuration — so additions require code review. Every host on the allow-list MUST contain `.` so that REQ:first-segment-dispatch's structural distinguisher holds (a forge with a dotless name like `gitea` could not be supported without revisiting D-0001).
 
 #### REQ: host-idna-normalization
 
@@ -93,26 +110,26 @@ After decoding, Studio MUST reject paths that contain any of the following segme
 
 #### REQ: referrer-policy-strict-origin
 
-The Studio origin MUST emit `Referrer-Policy: strict-origin` for all responses. This prevents private `{org}` / `{repo}` / `{path}` segments from leaking via the `Referer` header when a user navigates from Studio to a third-party link. The header applies to the entire `specscore.studio` origin, not only the `/app/project/*` routes.
+The Studio origin MUST emit `Referrer-Policy: strict-origin` for all responses. This prevents private `{org}` / `{repo}` / `{path}` segments from leaking via the `Referer` header when a user navigates from Studio to a third-party link. The header applies to the entire `specscore.studio` origin, not only the `/app/*` routes.
 
 ### Handle namespace constraints
 
 #### REQ: handle-no-dots
 
-The route parser MUST reject any `~{handle}` segment that contains a `.` character — such requests render the `unsupported-source` page from [REQ: unknown-host-rejection](#req-unknown-host-rejection). This guarantees that a handle segment can never collide with a `{git_host}` segment (which always contains at least one `.`). Handle registration policy MUST enforce the same constraint at registration time so route parsing and registration agree, but registration is out of scope for this feature.
+The route parser MUST reject any `~{handle}` segment that contains a `.` character — such requests render the `unsupported-source` page from [REQ: unknown-host-rejection](#req-unknown-host-rejection). This guarantees that a handle segment can never collide with a `{git_host}` segment (which always contains at least one `.` per REQ:host-allowlist). Handle registration policy MUST enforce the same constraint at registration time so route parsing and registration agree, but registration is out of scope for this Feature (deferred to the future handle-namespace Feature per REQ:handle-canonical-route).
 
 ## Architecture
 
 ```
 apps/app/src/app/
+  app.routes.ts                 ← top-level routes; the canonical /app/{git_host}/... matcher mounts here
   pages/
     project/
-      project.routes.ts           ← path + handle routes under /app/project/
-      project-page.ts             ← consumes parsed coordinates; see project-page feature
+      project-page.ts             ← consumes parsed coordinates; renders artifact or directory view
       unsupported-source.ts       ← dedicated component for REQ: unknown-host-rejection
   core/
     routing/
-      url-scheme.guard.ts         ← decodes path once, validates per REQ: path-*
+      url-scheme.guard.ts         ← dispatches per REQ:first-segment-dispatch, decodes path once, validates per REQ: path-*
       forge-host.allowlist.ts     ← canonical allow-list + IDNA normalization
       referer-ref-inference.ts    ← optional client-side ref inference
 worker/index.js                 ← appends Referrer-Policy header per REQ: referrer-policy-strict-origin
@@ -122,15 +139,16 @@ The `url-scheme.guard.ts` route guard runs before component activation and is th
 
 ## Data flow
 
-1. Browser requests `/app/project/{git_host}/{org}/{repo}/{path}?ref=…`.
+1. Browser requests `/app/{git_host}/{org}/{repo}/{path}?ref=…#page=…`.
 2. SPA fallback is provided by the Cloudflare Worker (`worker/index.js`): on a 404 from the static-asset binding, the Worker returns `/index.html`. The Angular router then takes over.
-3. Angular router matches the route. The URL-scheme guard runs:
-   a. Decode `{path}` once.
-   b. Reject the path on traversal / control-char / encoded-slash matches.
-   c. IDNA-normalize `{git_host}`; reject if outside allow-list → `unsupported-source` component.
-   d. Map allow-listed host to a hardcoded forge API base.
-4. The page component receives parsed `{git_host, org, repo, path, ref?, op?}` and proceeds with the rendering behavior defined in its own feature.
-5. On the project page, if `?ref` was absent, the client-side ref-inference step inspects `document.referrer`. On match, it pushes the resolved `?ref` via `history.replaceState`.
+3. Angular router matches the top-level route via a custom URL matcher that applies REQ:first-segment-dispatch. The URL-scheme guard runs:
+   a. Inspect first segment after `/app/` — if it contains `.`, treat as forge canonical; if it starts with `~`, treat as handle reservation; if it matches a registered app-route literal, dispatch there; otherwise 404.
+   b. (Forge branch) IDNA-normalize `{git_host}`; reject if outside allow-list → `unsupported-source` component.
+   c. (Forge branch) Decode `{path}` once.
+   d. (Forge branch) Reject the path on traversal / control-char / encoded-slash matches.
+   e. (Forge branch) Map allow-listed host to a hardcoded forge API base.
+4. The page component receives parsed `{git_host, org, repo, path, ref?, op?, page?}` and proceeds with the rendering behavior. When `#page=` is present and `{path}` resolves to a directory, the page renders the matching view (Features tree, Plans tree, etc.).
+5. On the project page, if `?ref` was absent, the client-side ref-inference step inspects `document.referrer`. On match, it pushes the resolved `?ref` via `history.replaceState`. The `#page=` fragment is preserved through `history.replaceState`.
 
 ## Error handling and failure modes
 
@@ -153,8 +171,8 @@ All ACs are testable. Recommended test surfaces:
 - **Route parsing & guard logic** — Jest unit tests against `url-scheme.guard.ts` and `forge-host.allowlist.ts`. Cover allow-list, IDNA normalization, path validation, decoding-once contract.
 - **Ref query param** — Playwright end-to-end against a fixture project, varying `?ref`.
 - **Ref inference** — Jest unit test against `referer-ref-inference.ts` with synthesized `document.referrer` values; deferred E2E coverage because the ADR marks this v1.1.
-- **Unsupported source** — Playwright check that `/app/project/evil.example/foo/bar` renders the unsupported-source component, not project chrome.
-- **Referrer-Policy header** — HTTP-level assertion against the Cloudflare Worker's response headers (deployed preview), confirming `Referrer-Policy: strict-origin` on `/app`, `/app/project/...`, and a static asset response.
+- **Unsupported source** — Playwright check that `/app/evil.example/foo/bar` renders the unsupported-source component, not project chrome.
+- **Referrer-Policy header** — HTTP-level assertion against the Cloudflare Worker's response headers (deployed preview), confirming `Referrer-Policy: strict-origin` on `/app`, `/app/...`, and a static asset response.
 
 Rehearse stubs MUST be scaffolded in the plan that implements this feature, one stub per AC. Skip-reasons are not expected for any AC.
 
@@ -164,7 +182,7 @@ Rehearse stubs MUST be scaffolded in the plan that implements this feature, one 
 - Per-feature stable opaque IDs (e.g. `/app/f/{ulid}`). The ADR records this as a future option behind the handle layer; this feature does not introduce it.
 - Server-side rendering or prerendering for OpenGraph / Twitter Card previews. Tracked separately if needed.
 - Edge-level migration of the pre-canonical `/project?id={repo}@{org}@{git_host}` URL form. Existing links in the wild are not redirected; their authors update them to the canonical form. The pre-canonical form is dropped, not bridged.
-- Migration of `/app/p/...` short-form URLs currently emitted by the `specscore` CLI to the canonical `/app/project/...` form. The migration story is a producer-side concern and belongs in the CLI's own plan.
+- Migration of any third-party-emitted URLs (old `/app/p/...` short form, `/app/project/...` intermediate form, or pre-canonical `?id=`). The `specscore` CLI itself has been updated to emit the canonical `/app/...` form alongside the D-0001 amendment; URLs in third-party content remain the author's responsibility.
 
 ## Dependencies
 
@@ -177,28 +195,28 @@ Rehearse stubs MUST be scaffolded in the plan that implements this feature, one 
 
 Scenario: visiting a canonical path URL renders the project page
 **Given** the user is authenticated and the underlying repository is accessible
-**When** the user navigates to `/app/project/github.com/specscore/specscore/spec/features/feature/README.md`
+**When** the user navigates to `/app/github.com/specscore/specscore/spec/features/feature/README.md`
 **Then** Studio renders the project page for `github.com/specscore/specscore` with the addressed artifact path applied
 
 ### AC: handle-canonical-parses (verifies REQ:handle-canonical-route, REQ:handle-no-dots)
 
 Scenario: a handle URL is recognized and parsed
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/~acme/platform/spec/features/login.md`
-**Then** the route guard parses `{handle: "acme", project_slug: "platform", path: "spec/features/login.md"}` and dispatches to the (future) handle resolver; no error chrome is rendered for the route shape itself
+**When** the user navigates to `/app/~acme/spec/features/login.md`
+**Then** the route guard parses `{handle: "acme", path: "spec/features/login.md"}` and renders the placeholder for the future handle resolver; no error chrome is rendered for the route shape itself
 
 ### AC: ref-pins-to-branch (verifies REQ:ref-query-param)
 
 Scenario: an explicit `?ref` pins resolution to a specific branch
 **Given** the underlying repository has a branch named `feature/login`
-**When** the user navigates to `/app/project/github.com/specscore/specscore/spec/features/feature/README.md?ref=feature/login`
+**When** the user navigates to `/app/github.com/specscore/specscore/spec/features/feature/README.md?ref=feature/login`
 **Then** the project page resolves the artifact against the `feature/login` ref, not the default branch
 
 ### AC: ref-defaults-to-head (verifies REQ:ref-query-param)
 
 Scenario: missing `?ref` resolves to the default branch
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/github.com/specscore/specscore/spec/features/feature/README.md` with no `?ref`
+**When** the user navigates to `/app/github.com/specscore/specscore/spec/features/feature/README.md` with no `?ref`
 **Then** the project page resolves the artifact at the repository's default branch
 
 ### AC: op-routes-to-operation (verifies REQ:op-query-param)
@@ -233,14 +251,14 @@ Scenario: missing or unrecognized referrer falls back to the default branch
 
 Scenario: an unrecognized host renders the unsupported-source page
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/evil.example/foo/bar`
+**When** the user navigates to `/app/evil.example/foo/bar`
 **Then** Studio renders the `unsupported-source` component and does not render the project sidebar, breadcrumbs, or README area
 
 ### AC: homoglyph-host-rejected (verifies REQ:host-idna-normalization, REQ:unknown-host-rejection)
 
 Scenario: a Cyrillic-homoglyph host is normalized and rejected
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/gіthub.com/foo/bar` where `і` is U+0456
+**When** the user navigates to `/app/gіthub.com/foo/bar` where `і` is U+0456
 **Then** the IDNA-normalized host fails the allow-list and Studio renders the `unsupported-source` component
 
 ### AC: no-fetch-host-templating (verifies REQ:no-host-templating-in-fetch)
@@ -253,7 +271,7 @@ Scenario: outbound fetches use a hardcoded base URL, not the URL-supplied host
 ### AC: path-decoded-once (verifies REQ:path-decoding-once)
 
 Scenario: a path is decoded exactly once between the URL bar and the page component
-**Given** the user navigates to `/app/project/github.com/foo/bar/spec/features/with%20space.md`
+**Given** the user navigates to `/app/github.com/foo/bar/spec/features/with%20space.md`
 **When** the URL-scheme guard parses the path
 **Then** the page component receives `spec/features/with space.md` (single decode), and no downstream consumer re-decodes
 
@@ -261,21 +279,21 @@ Scenario: a path is decoded exactly once between the URL bar and the page compon
 
 Scenario: a path containing `..` is rejected
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/github.com/foo/bar/spec/../../../etc/passwd`
+**When** the user navigates to `/app/github.com/foo/bar/spec/../../../etc/passwd`
 **Then** the URL-scheme guard rejects the path and Studio renders the `unsupported-source` component
 
 ### AC: null-byte-rejected (verifies REQ:path-traversal-rejection)
 
 Scenario: a path containing a null byte is rejected
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/github.com/foo/bar/spec/login%00.md`
+**When** the user navigates to `/app/github.com/foo/bar/spec/login%00.md`
 **Then** the URL-scheme guard rejects the path and Studio renders the `unsupported-source` component
 
 ### AC: encoded-slash-rejected (verifies REQ:path-traversal-rejection)
 
 Scenario: an encoded forward slash is rejected
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/github.com/foo/bar/spec%2Flogin.md`
+**When** the user navigates to `/app/github.com/foo/bar/spec%2Flogin.md`
 **Then** the URL-scheme guard rejects the path and Studio renders the `unsupported-source` component
 
 ### AC: referrer-policy-header-set (verifies REQ:referrer-policy-strict-origin)
@@ -289,13 +307,26 @@ Scenario: the Referrer-Policy header is set on every Studio response
 
 Scenario: a handle segment containing a dot is rejected by the route parser
 **Given** Studio is loaded
-**When** the user navigates to `/app/project/~acme.io/platform`
+**When** the user navigates to `/app/~acme.io`
 **Then** the route guard rejects the URL and Studio renders the `unsupported-source` component, never the project chrome
+
+### AC: first-segment-dispatch-by-dot (verifies REQ:first-segment-dispatch)
+
+Scenario: the router dispatches forge URLs vs app routes by the structural dot rule
+**Given** Studio is loaded
+**When** the user navigates to `/app/github.com/foo/bar` (segment 0 contains `.`) **AND** when the user navigates to `/app/landing` (segment 0 contains no `.`)
+**Then** the first URL dispatches to the canonical forge handler and the second dispatches to the existing `landing` app route; no router collision occurs
+
+### AC: page-hash-selects-view (verifies REQ:page-view-hash)
+
+Scenario: the `#page=` hash selects an in-page directory view
+**Given** the user is on a project page route resolved to a directory (e.g. `/app/github.com/specscore/specscore/spec`)
+**When** the URL includes `#page=features`
+**Then** the page renders the Features tree view rather than the default README view; the `#page=` value never appears in CDN cache keys or server logs
 
 ## Open Questions
 
 - Should ref inference (REQ: ref-inference-client-side) ship in v1 or be deferred to v1.1 as the ADR suggests? The current REQ uses MAY to permit either; the plan should decide.
-- The `/app/p/` short form currently emitted by the `specscore` CLI into spec files must reconcile with the chosen `/app/project/` canonical. Migration is producer-side and is not solved here; flagging so it is not forgotten.
 - Forge allow-list maintenance: where does the canonical list live (constant in code today; `specscore.yaml` extension in the future)? Decide before the second forge is added.
 - UX copy on the unsupported-source page: the component is intentionally generic in this revision; finalize the wording before the v1 launch so it doesn't read as a Studio bug to a user who hit a bad URL.
 
