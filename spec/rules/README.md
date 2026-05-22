@@ -7,3 +7,7 @@ Architectural rules and constraints that apply across the entire SpecScore App c
 | Rule | Description |
 |------|-------------|
 | [client-firestore-read-only](client-firestore-read-only.md) | Hub client must never write to Firestore directly |
+
+## Open Questions
+
+None at this time.

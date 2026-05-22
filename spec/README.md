@@ -9,6 +9,6 @@ SpecScore-formatted specifications for this project.
 | [`features/`](features/README.md) | Feature specifications — one per sub-system |
 | [`ideas/`](ideas/README.md) | Pre-spec one-pagers exploring problem-direction-MVP |
 
-## Outstanding Questions
+## Open Questions
 
 None at this time.
