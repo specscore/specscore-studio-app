@@ -5,7 +5,7 @@ import { AuthService } from '@/app/core/services/auth.service';
 import { GitHubService, GitHubApiError } from '@/app/core/services/github.service';
 import { UrlSchemeCoordinatesService } from '@/app/core/routing/url-scheme.guard';
 
-type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error';
+type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error' | 'handle_unresolved';
 
 @Component({
   selector: 'app-project-page',
@@ -47,6 +47,19 @@ type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error';
           <div class="markdown-body" [innerHTML]="readmeHtml()"></div>
         </div>
       }
+      @case ('handle_unresolved') {
+        <div class="card" data-testid="handle-unresolved">
+          <div class="flex flex-col items-center gap-4 p-8 text-center">
+            <i class="pi pi-at text-4xl text-muted-color"></i>
+            <p class="text-xl font-semibold m-0">{{ handleLabel() }}</p>
+            <p class="text-muted-color m-0">
+              Handle resolution is coming soon. The handle namespace is
+              reserved in the URL contract; mapping handles to forge
+              repositories will arrive in a follow-up feature.
+            </p>
+          </div>
+        </div>
+      }
     }
   `,
   styles: [`
@@ -71,6 +84,7 @@ export class ProjectPage {
   readmeHtml = signal('');
   errorMessage = signal('');
   refreshing = signal(false);
+  handleLabel = signal('');
 
   private owner = '';
   private repo = '';
@@ -92,13 +106,22 @@ export class ProjectPage {
     }
 
     // Prefer the canonical URL-scheme coordinates set by urlSchemeGuard
-    // (Task 1 of plan studio-url-scheme). Fall back to the legacy `?id=`
-    // query-param shape for URLs still in the wild (e.g. /app/project?id=...).
+    // (plan studio-url-scheme). Fall back to the legacy `?id=` query-param
+    // shape for URLs still in the wild (e.g. /app/project?id=...).
     const coords = this.urlScheme.coordinates();
-    if (coords && coords.kind === 'path') {
+    if (coords?.kind === 'path') {
       this.owner = coords.org;
       this.repo = coords.repo;
       this.loadReadme(false);
+      return;
+    }
+    if (coords?.kind === 'handle') {
+      // Handle resolution is a future feature; the URL contract only
+      // reserves the route shape per REQ:handle-canonical-route. AC
+      // requires "no error chrome" for the parsed shape itself, so we
+      // render a neutral "coming soon" panel rather than the error state.
+      this.handleLabel.set(`~${coords.handle}/${coords.project_slug}`);
+      this.state.set('handle_unresolved');
       return;
     }
 

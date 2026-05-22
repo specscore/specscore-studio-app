@@ -4,6 +4,7 @@ import type { ActivatedRouteSnapshot } from '@angular/router';
 import {
   UrlSchemeCoordinatesService,
   canonicalPathMatcher,
+  handlePathMatcher,
   isPathSegmentValid,
   urlSchemeGuard,
 } from './url-scheme.guard';
@@ -51,10 +52,39 @@ describe('canonicalPathMatcher', () => {
   });
 
   it('returns null for handle-shape URLs (segment 0 starts with ~)', () => {
-    // Handle shape `/~acme/platform/...` is reserved for Task 4 — for now it
-    // falls through to the next route configuration.
+    // Handle shape `/~acme/platform/...` is dispatched by handlePathMatcher;
+    // this matcher rejects it so the router picks the right route.
     const segments = [seg('~acme'), seg('platform'), seg('spec')];
     expect(canonicalPathMatcher(segments, {} as never, {} as never)).toBeNull();
+  });
+});
+
+describe('handlePathMatcher', () => {
+  it('matches a 2-segment handle URL', () => {
+    const segments = [seg('~acme'), seg('platform')];
+    const result = handlePathMatcher(segments, {} as never, {} as never);
+    expect(result).toEqual({ consumed: segments });
+  });
+
+  it('matches a multi-segment handle URL with trailing path', () => {
+    const segments = [seg('~acme'), seg('platform'), seg('spec'), seg('login.md')];
+    const result = handlePathMatcher(segments, {} as never, {} as never);
+    expect(result?.consumed).toHaveLength(4);
+  });
+
+  it('returns null for fewer than 2 segments', () => {
+    expect(handlePathMatcher([seg('~acme')], {} as never, {} as never)).toBeNull();
+    expect(handlePathMatcher([], {} as never, {} as never)).toBeNull();
+  });
+
+  it('returns null for non-handle URLs (no ~ prefix)', () => {
+    const segments = [seg('github.com'), seg('foo')];
+    expect(handlePathMatcher(segments, {} as never, {} as never)).toBeNull();
+  });
+
+  it('returns null for a bare `~` segment (no actual handle)', () => {
+    const segments = [seg('~'), seg('platform')];
+    expect(handlePathMatcher(segments, {} as never, {} as never)).toBeNull();
   });
 });
 
@@ -208,6 +238,59 @@ describe('urlSchemeGuard', () => {
       url: [seg('github.com'), seg('foo'), seg('bar'), seg('..')],
     });
     expect(service.coordinates()).toBeNull();
+  });
+
+  it('parses a canonical handle URL into handle coordinates (REQ:handle-canonical-route)', () => {
+    const allow = runGuard({
+      url: [seg('~acme'), seg('platform'), seg('spec'), seg('features'), seg('login.md')],
+    });
+
+    const service = TestBed.inject(UrlSchemeCoordinatesService);
+    expect(allow).toBe(true);
+    expect(service.coordinates()).toEqual({
+      kind: 'handle',
+      handle: 'acme',
+      project_slug: 'platform',
+      path: 'spec/features/login.md',
+    });
+  });
+
+  it('parses a bare handle URL with empty path', () => {
+    const allow = runGuard({
+      url: [seg('~acme'), seg('platform')],
+    });
+
+    const service = TestBed.inject(UrlSchemeCoordinatesService);
+    expect(allow).toBe(true);
+    expect(service.coordinates()).toEqual({
+      kind: 'handle',
+      handle: 'acme',
+      project_slug: 'platform',
+      path: '',
+    });
+  });
+
+  it('rejects a handle containing a dot (REQ:handle-no-dots)', () => {
+    const result = runGuard({
+      url: [seg('~acme.io'), seg('platform')],
+    });
+    expect(result).toBeInstanceOf(UrlTree);
+    expect((result as UrlTree).toString()).toBe('/project/unsupported-source');
+  });
+
+  it('does not populate coordinates service on handle dot rejection', () => {
+    const service = TestBed.inject(UrlSchemeCoordinatesService);
+    service.set(null);
+    runGuard({ url: [seg('~acme.io'), seg('platform')] });
+    expect(service.coordinates()).toBeNull();
+  });
+
+  it('applies path validation to handle-shape trailing path', () => {
+    const result = runGuard({
+      url: [seg('~acme'), seg('platform'), seg('..'), seg('etc')],
+    });
+    expect(result).toBeInstanceOf(UrlTree);
+    expect((result as UrlTree).toString()).toBe('/project/unsupported-source');
   });
 });
 

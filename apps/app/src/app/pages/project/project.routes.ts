@@ -1,6 +1,10 @@
 import { Routes } from '@angular/router';
 import { ProjectSpecPage } from './project-spec-page';
-import { canonicalPathMatcher, urlSchemeGuard } from '@/app/core/routing/url-scheme.guard';
+import {
+  canonicalPathMatcher,
+  handlePathMatcher,
+  urlSchemeGuard,
+} from '@/app/core/routing/url-scheme.guard';
 
 export default [
   {
@@ -36,6 +40,14 @@ export default [
     path: 'unsupported-source',
     loadComponent: () =>
       import('./unsupported-source').then(m => m.UnsupportedSourceComponent),
+  },
+  // Canonical handle shape per spec/features/studio-url-scheme:
+  // /app/project/~{handle}/{project-slug}/{path}
+  // Declared before the path matcher so `~`-prefixed URLs dispatch here.
+  {
+    matcher: handlePathMatcher,
+    canActivate: [urlSchemeGuard],
+    loadComponent: () => import('./project-page').then(m => m.ProjectPage),
   },
   // Canonical path shape per spec/features/studio-url-scheme:
   // /app/project/{git_host}/{org}/{repo}/{path}

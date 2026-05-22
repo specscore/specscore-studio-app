@@ -33,7 +33,27 @@ export interface PathCoordinates {
   readonly path: string;
 }
 
-export type UrlSchemeCoordinates = PathCoordinates;
+/**
+ * Parsed coordinates from a canonical handle-shape URL
+ * (`/app/project/~{handle}/{project-slug}/{path}`). Per
+ * REQ:handle-canonical-route, this shape only reserves the route — the
+ * resolution from `{handle, project_slug}` to a concrete forge repository
+ * is a future feature.
+ */
+export interface HandleCoordinates {
+  readonly kind: 'handle';
+  /** The handle namespace (segment 0 with the leading `~` stripped). MUST
+   *  NOT contain `.` per REQ:handle-no-dots — the guard rejects dot-bearing
+   *  handles to UnsupportedSourceComponent before producing this shape. */
+  readonly handle: string;
+  readonly project_slug: string;
+  /** Joined trailing segments (may be empty). Already URL-segment-decoded
+   *  exactly once; subject to the same path-validation pipeline as the
+   *  path-shape coordinates. */
+  readonly path: string;
+}
+
+export type UrlSchemeCoordinates = PathCoordinates | HandleCoordinates;
 
 /**
  * Holds the most recently parsed URL-scheme coordinates. Set by
@@ -86,52 +106,97 @@ function arePathSegmentsValid(pathSegments: UrlSegment[]): boolean {
  * `route.url`. Returns null on fewer than 3 segments — Angular's router then
  * tries subsequent route configurations.
  *
- * No content validation here: host allow-list and path traversal checks live
- * in the guard. Handle namespace (`~{handle}/{project-slug}`) lands in
- * Task 4 and will extend this matcher (or add a sibling matcher).
+ * Handle-shape URLs (leading `~` on segment 0) are handled by the sibling
+ * `handlePathMatcher` below; this matcher rejects them so the router can
+ * dispatch to the right route configuration.
  */
 export const canonicalPathMatcher: UrlMatcher = (segments) => {
   if (segments.length < 3) return null;
-  // Reject handle-shape URLs (leading `~` on segment 0) — Task 4 will add a
-  // dedicated handle matcher. For Task 1 they fall through to the next route.
   if (segments[0].path.startsWith('~')) return null;
   return { consumed: segments };
 };
 
 /**
- * Functional CanActivate guard that parses the canonical path coordinates
- * from the activated route snapshot, validates them, and writes them to
+ * Custom UrlMatcher for the canonical handle shape
+ * (`/~{handle}/{project-slug}/{path}`). Matches when:
+ *   - Segment 0 starts with `~` AND has more characters after it (a bare `~`
+ *     is meaningless).
+ *   - The URL has at least 2 segments (`~{handle}` and `{project-slug}`).
+ *
+ * The dot-in-handle check (REQ:handle-no-dots) lives in the guard, not
+ * here — so a `~acme.io/platform` URL still routes to the project surface
+ * and gets rejected to UnsupportedSourceComponent with a UrlTree, instead
+ * of falling through to the 404 page (which would be misleading UX).
+ */
+export const handlePathMatcher: UrlMatcher = (segments) => {
+  if (segments.length < 2) return null;
+  const first = segments[0].path;
+  if (!first.startsWith('~') || first.length < 2) return null;
+  return { consumed: segments };
+};
+
+function rejectToUnsupportedSource(): UrlTree {
+  return inject(Router).createUrlTree(['/project/unsupported-source']);
+}
+
+/**
+ * Functional CanActivate guard that parses the canonical URL-scheme
+ * coordinates (path-shape OR handle-shape) from the activated route
+ * snapshot, validates them, and writes them to
  * UrlSchemeCoordinatesService.
  *
- * Validation pipeline (each stage gates the next):
+ * Path-shape validation pipeline (each stage gates the next):
  *   1. Forge-host allow-list (REQ:host-allowlist, REQ:host-idna-normalization).
  *   2. Path-segment validation (REQ:path-traversal-rejection,
  *      REQ:path-decoding-once via "decode-then-check, never re-decode").
+ *
+ * Handle-shape validation pipeline:
+ *   1. Handle MUST NOT contain `.` (REQ:handle-no-dots) — guarantees a
+ *      handle segment can never collide with a `{git_host}` segment which
+ *      always contains at least one `.`.
+ *   2. Path-segment validation (same as above).
  *
  * On rejection at any stage, returns a UrlTree to
  * `/project/unsupported-source` so the Angular router renders
  * UnsupportedSourceComponent instead of the project chrome (per
  * REQ:unknown-host-rejection — no phishing surface). The coordinates
- * service is NOT populated on rejection so downstream consumers cannot
- * accidentally observe the rejected input.
- *
- * Future tasks layer in additional validations:
- *   - Task 4: handle-namespace dot rejection.
+ * service is NOT populated on rejection.
  */
 export const urlSchemeGuard: CanActivateFn = (route): boolean | UrlTree => {
   const segs = route.url;
-  // canonicalPathMatcher guarantees segs.length >= 3 — defensive check below.
+  if (segs.length < 2) return true; // matchers guarantee minimums; defensive.
+
+  // Handle shape: segment 0 starts with `~`. handlePathMatcher routes us here
+  // when length >= 2 and the prefix is present.
+  if (segs[0].path.startsWith('~')) {
+    const handle = segs[0].path.slice(1); // strip leading `~`
+    if (handle.length === 0 || handle.includes('.')) {
+      return rejectToUnsupportedSource();
+    }
+    const projectSlug = segs[1].path;
+    const rest = segs.slice(2);
+    if (!arePathSegmentsValid(rest)) {
+      return rejectToUnsupportedSource();
+    }
+    inject(UrlSchemeCoordinatesService).set({
+      kind: 'handle',
+      handle,
+      project_slug: projectSlug,
+      path: rest.map((s) => s.path).join('/'),
+    });
+    return true;
+  }
+
+  // Path shape: canonicalPathMatcher guarantees >= 3 segments.
   if (segs.length < 3) return true;
   const [host, org, repo, ...rest] = segs;
 
   if (!isAllowedForgeHost(host.path)) {
-    return inject(Router).createUrlTree(['/project/unsupported-source']);
+    return rejectToUnsupportedSource();
   }
-
   if (!arePathSegmentsValid(rest)) {
-    return inject(Router).createUrlTree(['/project/unsupported-source']);
+    return rejectToUnsupportedSource();
   }
-
   inject(UrlSchemeCoordinatesService).set({
     kind: 'path',
     git_host: host.path,
