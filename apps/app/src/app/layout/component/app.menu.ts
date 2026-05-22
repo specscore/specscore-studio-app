@@ -109,6 +109,15 @@ export class AppMenu implements OnInit {
             return item;
         });
 
+        // Deep-link expansion: when the URL points inside a spec directory
+        // (e.g. /spec/features/cli), the user lands without ever clicking
+        // a menu item, so the lazy `command:` callbacks above never fire
+        // and the tree stays collapsed. Walk the current path and trigger
+        // loadChildren for each directory level so the tree populates on
+        // the next render. Each fetch is idempotent (cached); already-loaded
+        // levels short-circuit immediately.
+        this.expandForCurrentPath(coords, projectRoot, specTypes);
+
         return [
             {
                 label: 'Project',
@@ -121,6 +130,44 @@ export class AppMenu implements OnInit {
                 items: specItems,
             },
         ];
+    }
+
+    /**
+     * Walk the current URL path (`coords.path`) and trigger loadChildren for
+     * each spec sub-directory level so deep links auto-expand the tree
+     * without requiring the user to click each menu item. Idempotent per
+     * directory — already-cached levels short-circuit inside loadChildren.
+     *
+     * Example: coords.path = "spec/features/cli/spec/init" triggers
+     * loadChildren for "spec/features" → "spec/features/cli" →
+     * "spec/features/cli/spec" so PrimeNG can expand each level and
+     * highlight "init" as active.
+     */
+    private expandForCurrentPath(
+        coords: PathCoordinates,
+        projectRoot: string,
+        specTypes: readonly { dir: string }[],
+    ) {
+        if (!coords.path.startsWith('spec/')) return;
+        const segments = coords.path.split('/');
+        if (segments.length < 2) return;
+        const topDir = segments[1];
+        const matchingSpec = specTypes.find(s => s.dir === topDir);
+        if (!matchingSpec) return;
+        // Load every prefix from spec/{topDir} up to (but not including) the
+        // final segment — the final segment is the active leaf, no children
+        // needed beneath it for highlight purposes.
+        for (let depth = 2; depth <= segments.length; depth++) {
+            const prefixPath = segments.slice(0, depth).join('/');
+            if (prefixPath === coords.path) break;
+            this.loadChildren(prefixPath, projectRoot, coords, matchingSpec.dir);
+        }
+        // Also ensure the top-level spec directory itself is loaded, even if
+        // coords.path === "spec/features" (no further segments).
+        const topPath = `spec/${topDir}`;
+        if (!this.specChildrenCache.has(topPath)) {
+            this.loadChildren(topPath, projectRoot, coords, matchingSpec.dir);
+        }
     }
 
     /**
