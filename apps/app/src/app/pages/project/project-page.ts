@@ -1,5 +1,4 @@
 import { Component, ViewEncapsulation, inject, signal, effect } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { AuthService } from '@/app/core/services/auth.service';
 import { GitHubService, GitHubApiError } from '@/app/core/services/github.service';
@@ -12,6 +11,11 @@ type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error' | 'handle_
   standalone: true,
   imports: [ButtonModule],
   encapsulation: ViewEncapsulation.None,
+  // data-op exposes the Studio operation mode in a way that's observable from
+  // Playwright/CSS without coupling to internal state — see
+  // REQ:op-query-param and AC:op-routes-to-operation. Default 'read' when
+  // ?op is absent.
+  host: { '[attr.data-op]': 'op()' },
   template: `
     @switch (state()) {
       @case ('not_authenticated') {
@@ -75,7 +79,6 @@ type PageState = 'loading' | 'loaded' | 'not_authenticated' | 'error' | 'handle_
   `]
 })
 export class ProjectPage {
-  private readonly route = inject(ActivatedRoute);
   private readonly authService = inject(AuthService);
   private readonly githubService = inject(GitHubService);
   private readonly urlScheme = inject(UrlSchemeCoordinatesService);
@@ -85,9 +88,13 @@ export class ProjectPage {
   errorMessage = signal('');
   refreshing = signal(false);
   handleLabel = signal('');
+  /** Current operation mode (e.g. 'read', 'explore', 'edit'). Exposed on
+   *  the host element as data-op for observable mode-switching per AC. */
+  op = signal<string>('read');
 
   private owner = '';
   private repo = '';
+  private ref: string | undefined;
   private loaded = false;
 
   constructor() {
@@ -105,43 +112,37 @@ export class ProjectPage {
       return;
     }
 
-    // Prefer the canonical URL-scheme coordinates set by urlSchemeGuard
-    // (plan studio-url-scheme). Fall back to the legacy `?id=` query-param
-    // shape for URLs still in the wild (e.g. /app/project?id=...).
+    // ProjectPage consumes parsed coordinates produced by urlSchemeGuard
+    // (plan studio-url-scheme). The canonical URL contract is the only
+    // supported input — no legacy `?id=` fallback exists.
     const coords = this.urlScheme.coordinates();
-    if (coords?.kind === 'path') {
+    if (!coords) {
+      // Reaching the page without coordinates means routing was misconfigured
+      // (guard didn't run). Surface, don't swallow.
+      this.state.set('error');
+      this.errorMessage.set('This page must be opened from a canonical project URL.');
+      return;
+    }
+
+    // Reflect ?op as the host's data-op attribute — even on the
+    // handle-unresolved branch — so AC:op-routes-to-operation is observable
+    // regardless of which shape the URL took.
+    this.op.set(coords.op ?? 'read');
+
+    if (coords.kind === 'path') {
       this.owner = coords.org;
       this.repo = coords.repo;
+      this.ref = coords.ref;
       this.loadReadme(false);
       return;
     }
-    if (coords?.kind === 'handle') {
-      // Handle resolution is a future feature; the URL contract only
-      // reserves the route shape per REQ:handle-canonical-route. AC
-      // requires "no error chrome" for the parsed shape itself, so we
-      // render a neutral "coming soon" panel rather than the error state.
-      this.handleLabel.set(`~${coords.handle}/${coords.project_slug}`);
-      this.state.set('handle_unresolved');
-      return;
-    }
 
-    const id = this.route.snapshot.queryParamMap.get('id');
-    if (!id) {
-      this.state.set('error');
-      this.errorMessage.set('No project ID provided.');
-      return;
-    }
-
-    const parsed = this.parseProjectId(id);
-    if (!parsed) {
-      this.state.set('error');
-      this.errorMessage.set('Invalid project ID format.');
-      return;
-    }
-
-    this.owner = parsed.owner;
-    this.repo = parsed.repo;
-    this.loadReadme(false);
+    // Handle shape: the URL contract reserves it per REQ:handle-canonical-route
+    // but resolution to a concrete forge repository is a future feature. AC
+    // requires "no error chrome" for the parsed shape itself, so we render a
+    // neutral "coming soon" panel rather than the error state.
+    this.handleLabel.set(`~${coords.handle}/${coords.project_slug}`);
+    this.state.set('handle_unresolved');
   }
 
   refreshReadme() {
@@ -156,7 +157,7 @@ export class ProjectPage {
   }
 
   private loadReadme(skipCache: boolean) {
-    this.githubService.fetchReadmeHtml(this.owner, this.repo, skipCache).subscribe({
+    this.githubService.fetchReadmeHtml(this.owner, this.repo, skipCache, this.ref).subscribe({
       next: (html) => {
         this.readmeHtml.set(html);
         this.state.set('loaded');
@@ -172,11 +173,5 @@ export class ProjectPage {
         this.refreshing.set(false);
       },
     });
-  }
-
-  private parseProjectId(id: string): { owner: string; repo: string } | null {
-    const match = id.match(/^([^@]+)@([^@]+)@([^@]+)$/);
-    if (!match) return null;
-    return { owner: match[2], repo: match[1] };
   }
 }

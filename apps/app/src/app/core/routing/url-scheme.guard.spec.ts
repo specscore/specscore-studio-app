@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { UrlSegment, UrlTree, provideRouter } from '@angular/router';
-import type { ActivatedRouteSnapshot } from '@angular/router';
+import { UrlSegment, UrlTree, convertToParamMap, provideRouter } from '@angular/router';
+import type { ActivatedRouteSnapshot, ParamMap } from '@angular/router';
 import {
   UrlSchemeCoordinatesService,
   canonicalPathMatcher,
@@ -14,13 +14,20 @@ function seg(path: string): UrlSegment {
   return new UrlSegment(path, {});
 }
 
+/** Empty query-param map for snapshots whose tests don't care about ?ref/?op. */
+const EMPTY_PARAMS: ParamMap = convertToParamMap({});
+
 /**
  * Helper: invoke the functional guard inside an Angular injection context.
  * The guard returns true | UrlTree depending on validation outcome.
  */
 function runGuard(snapshot: Partial<ActivatedRouteSnapshot>): boolean | UrlTree {
+  const full = {
+    queryParamMap: EMPTY_PARAMS,
+    ...snapshot,
+  } as ActivatedRouteSnapshot;
   return TestBed.runInInjectionContext(() =>
-    urlSchemeGuard(snapshot as ActivatedRouteSnapshot, { url: '' } as never),
+    urlSchemeGuard(full, { url: '' } as never),
   ) as boolean | UrlTree;
 }
 
@@ -291,6 +298,77 @@ describe('urlSchemeGuard', () => {
     });
     expect(result).toBeInstanceOf(UrlTree);
     expect((result as UrlTree).toString()).toBe('/project/unsupported-source');
+  });
+
+  it('extracts ?ref onto path coordinates (REQ:ref-query-param)', () => {
+    runGuard({
+      url: [seg('github.com'), seg('specscore'), seg('specscore')],
+      queryParamMap: convertToParamMap({ ref: 'feature/login' }),
+    });
+    expect(TestBed.inject(UrlSchemeCoordinatesService).coordinates()).toMatchObject({
+      kind: 'path',
+      ref: 'feature/login',
+    });
+  });
+
+  it('preserves slashes in ?ref values (e.g. feature/x) without re-decoding', () => {
+    // ParamMap already URL-decodes once; whether the URL sent `feature/x` or
+    // `feature%2Fx`, Angular hands us `feature/x` here. The guard must NOT
+    // re-decode and MUST preserve `/`.
+    runGuard({
+      url: [seg('github.com'), seg('specscore'), seg('specscore')],
+      queryParamMap: convertToParamMap({ ref: 'release/v1.2.3' }),
+    });
+    expect(TestBed.inject(UrlSchemeCoordinatesService).coordinates()?.ref).toBe('release/v1.2.3');
+  });
+
+  it('exposes ref:undefined when ?ref is absent (REQ:ref-query-param default behavior)', () => {
+    runGuard({
+      url: [seg('github.com'), seg('specscore'), seg('specscore')],
+    });
+    expect(TestBed.inject(UrlSchemeCoordinatesService).coordinates()?.ref).toBeUndefined();
+  });
+
+  it('normalizes an empty ?ref to undefined', () => {
+    runGuard({
+      url: [seg('github.com'), seg('specscore'), seg('specscore')],
+      queryParamMap: convertToParamMap({ ref: '' }),
+    });
+    expect(TestBed.inject(UrlSchemeCoordinatesService).coordinates()?.ref).toBeUndefined();
+  });
+
+  it('extracts ?op onto path coordinates (REQ:op-query-param)', () => {
+    runGuard({
+      url: [seg('github.com'), seg('specscore'), seg('specscore')],
+      queryParamMap: convertToParamMap({ op: 'explore' }),
+    });
+    expect(TestBed.inject(UrlSchemeCoordinatesService).coordinates()).toMatchObject({
+      kind: 'path',
+      op: 'explore',
+    });
+  });
+
+  it('extracts both ?ref and ?op together', () => {
+    runGuard({
+      url: [seg('github.com'), seg('specscore'), seg('specscore')],
+      queryParamMap: convertToParamMap({ ref: 'main', op: 'edit' }),
+    });
+    expect(TestBed.inject(UrlSchemeCoordinatesService).coordinates()).toMatchObject({
+      ref: 'main',
+      op: 'edit',
+    });
+  });
+
+  it('extracts ?ref and ?op onto handle coordinates too', () => {
+    runGuard({
+      url: [seg('~acme'), seg('platform')],
+      queryParamMap: convertToParamMap({ ref: 'main', op: 'ask' }),
+    });
+    expect(TestBed.inject(UrlSchemeCoordinatesService).coordinates()).toMatchObject({
+      kind: 'handle',
+      ref: 'main',
+      op: 'ask',
+    });
   });
 });
 

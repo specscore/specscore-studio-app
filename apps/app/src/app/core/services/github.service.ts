@@ -24,20 +24,26 @@ export class GitHubService {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly dirCache = new Map<string, DirCacheEntry>();
 
-  fetchReadmeHtml(owner: string, repo: string, skipCache = false): Observable<string> {
-    const key = `${owner}/${repo}`;
+  fetchReadmeHtml(owner: string, repo: string, skipCache = false, ref?: string): Observable<string> {
+    // ref is part of the cache key so /readme@main and /readme@feature-x
+    // don't collide. Undefined ref (default branch) keeps the existing key.
+    const key = ref ? `${owner}/${repo}@${ref}` : `${owner}/${repo}`;
     if (!skipCache) {
       const entry = this.cache.get(key);
       if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
         return of(entry.html);
       }
     }
-    return from(this.fetchReadmeHtmlAsync(owner, repo));
+    return from(this.fetchReadmeHtmlAsync(owner, repo, ref));
   }
 
-  private async fetchReadmeHtmlAsync(owner: string, repo: string): Promise<string> {
+  private async fetchReadmeHtmlAsync(owner: string, repo: string, ref?: string): Promise<string> {
+    // Append `?ref=...` per the GitHub Contents API contract when a ref is
+    // pinned (REQ:ref-query-param). Absent ref → server resolves at the
+    // repository's default branch (REQ:ref-defaults-to-head).
+    const refQuery = ref ? `?ref=${encodeURIComponent(ref)}` : '';
     const response = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/readme`,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/readme${refQuery}`,
       {
         headers: {
           Accept: 'application/vnd.github.html+json',
@@ -55,8 +61,9 @@ export class GitHubService {
       throw new GitHubApiError('unknown', `GitHub API error: ${response.status}`);
     }
 
+    const cacheKey = ref ? `${owner}/${repo}@${ref}` : `${owner}/${repo}`;
     const html = this.rewriteRelativeImageUrls(await response.text(), owner, repo);
-    this.cache.set(`${owner}/${repo}`, { html, timestamp: Date.now() });
+    this.cache.set(cacheKey, { html, timestamp: Date.now() });
     return html;
   }
 

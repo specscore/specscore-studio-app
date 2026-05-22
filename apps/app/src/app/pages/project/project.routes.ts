@@ -7,13 +7,16 @@ import {
 } from '@/app/core/routing/url-scheme.guard';
 
 export default [
-  {
-    path: '',
-    loadComponent: () => import('./project-page').then(m => m.ProjectPage),
-  },
   // NOTE: literal sub-route paths MUST be declared BEFORE the canonical-path
   // matcher below — otherwise the matcher would consume e.g. /project/features
   // as `{git_host: 'features'}` instead of routing to ProjectSpecPage.
+  //
+  // The bare `/project` route used to serve a legacy `?id=` URL form. That
+  // contract is gone — canonical /project/{git_host}/{org}/{repo} is now the
+  // only entry point, and a bare `/project` falls through to the global 404.
+  // ProjectSpecPage's sibling routes below (features/plans/etc.) still use
+  // their own pre-canonical scheme; cleaning those up is out of scope for
+  // this Plan and belongs in a follow-up.
   {
     path: 'features',
     component: ProjectSpecPage,

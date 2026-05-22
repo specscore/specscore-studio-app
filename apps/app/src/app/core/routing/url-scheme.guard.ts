@@ -22,8 +22,25 @@ import { Router } from '@angular/router';
 import type { CanActivateFn, UrlMatcher, UrlTree, UrlSegment } from '@angular/router';
 import { isAllowedForgeHost } from './forge-host.allowlist';
 
+/**
+ * Optional query-parameter contract shared by both URL shapes per
+ * REQ:ref-query-param and REQ:op-query-param.
+ *
+ *   - `ref`: a git reference (branch | tag | sha). Already URL-decoded once
+ *     by Angular's QueryParamMap; downstream consumers MUST NOT re-decode.
+ *     When `undefined`, the page resolves at the repository's default
+ *     branch (REQ:ref-query-param).
+ *   - `op`: a Studio operation (initial set: 'explore', 'edit', 'ask',
+ *     'request-change'). The set is extensible — additions are code
+ *     changes inside the page component. Undefined means "default read view".
+ */
+export interface QueryParamCoordinates {
+  readonly ref?: string;
+  readonly op?: string;
+}
+
 /** Parsed coordinates from a canonical path-shape URL. */
-export interface PathCoordinates {
+export interface PathCoordinates extends QueryParamCoordinates {
   readonly kind: 'path';
   readonly git_host: string;
   readonly org: string;
@@ -40,7 +57,7 @@ export interface PathCoordinates {
  * resolution from `{handle, project_slug}` to a concrete forge repository
  * is a future feature.
  */
-export interface HandleCoordinates {
+export interface HandleCoordinates extends QueryParamCoordinates {
   readonly kind: 'handle';
   /** The handle namespace (segment 0 with the leading `~` stripped). MUST
    *  NOT contain `.` per REQ:handle-no-dots — the guard rejects dot-bearing
@@ -140,6 +157,26 @@ function rejectToUnsupportedSource(): UrlTree {
 }
 
 /**
+ * Extract the `?ref` and `?op` query parameters per REQ:ref-query-param and
+ * REQ:op-query-param. Angular's QueryParamMap already URL-decodes once, so
+ * a `?ref=feature%2Fx` arrives as `feature/x` here; we do not re-decode.
+ * Returns an object whose properties are `undefined` when absent — never
+ * empty-string — so consumers can distinguish "not specified" from
+ * "explicitly empty". An empty-string value coming from the URL is also
+ * normalized to `undefined` to keep that distinction clean.
+ */
+function extractQueryParams(
+  queryParamMap: { get(name: string): string | null },
+): QueryParamCoordinates {
+  const ref = queryParamMap.get('ref');
+  const op = queryParamMap.get('op');
+  return {
+    ref: ref && ref.length > 0 ? ref : undefined,
+    op: op && op.length > 0 ? op : undefined,
+  };
+}
+
+/**
  * Functional CanActivate guard that parses the canonical URL-scheme
  * coordinates (path-shape OR handle-shape) from the activated route
  * snapshot, validates them, and writes them to
@@ -166,6 +203,8 @@ export const urlSchemeGuard: CanActivateFn = (route): boolean | UrlTree => {
   const segs = route.url;
   if (segs.length < 2) return true; // matchers guarantee minimums; defensive.
 
+  const query = extractQueryParams(route.queryParamMap);
+
   // Handle shape: segment 0 starts with `~`. handlePathMatcher routes us here
   // when length >= 2 and the prefix is present.
   if (segs[0].path.startsWith('~')) {
@@ -183,6 +222,7 @@ export const urlSchemeGuard: CanActivateFn = (route): boolean | UrlTree => {
       handle,
       project_slug: projectSlug,
       path: rest.map((s) => s.path).join('/'),
+      ...query,
     });
     return true;
   }
@@ -203,6 +243,7 @@ export const urlSchemeGuard: CanActivateFn = (route): boolean | UrlTree => {
     org: org.path,
     repo: repo.path,
     path: rest.map((s) => s.path).join('/'),
+    ...query,
   });
   return true;
 };
