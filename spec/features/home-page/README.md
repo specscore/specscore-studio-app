@@ -1,6 +1,6 @@
 # Feature: Home Page
 
-> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=explore) | [Edit](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=edit) | [Ask question](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=ask) | [Request change](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/home-page?op=request-change) |
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/home-page?op=explore) | [Edit](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/home-page?op=edit) | [Ask question](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/home-page?op=ask) | [Request change](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/home-page?op=request-change) |
 
 **Status:** Conceptual
 

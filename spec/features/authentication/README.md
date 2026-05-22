@@ -1,6 +1,6 @@
 # Feature: Authentication
 
-> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=explore) | [Edit](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=edit) | [Ask question](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=ask) | [Request change](https://specscore.studio/app/p/github.com/specscore/specscore-studio-app/spec/features/authentication?op=request-change) |
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/authentication?op=explore) | [Edit](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/authentication?op=edit) | [Ask question](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/authentication?op=ask) | [Request change](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/authentication?op=request-change) |
 
 **Status:** Conceptual
 

@@ -5,6 +5,10 @@ import { MenuItem } from 'primeng/api';
 import { AppMenuitem } from './app.menuitem';
 import { GitHubService } from '@/app/core/services/github.service';
 import { LayoutService } from '@/app/layout/service/layout.service';
+import {
+    PathCoordinates,
+    UrlSchemeCoordinatesService,
+} from '@/app/core/routing/url-scheme.guard';
 import { filter } from 'rxjs/operators';
 
 @Component({
@@ -25,12 +29,13 @@ export class AppMenu implements OnInit {
     private readonly router = inject(Router);
     private readonly githubService = inject(GitHubService);
     private readonly layoutService = inject(LayoutService);
+    private readonly urlScheme = inject(UrlSchemeCoordinatesService);
 
     readonly model = signal<MenuItem[]>([]);
 
     private specChildrenCache = new Map<string, MenuItem[]>();
     private loadingPaths = new Set<string>();
-    private lastProjectId: string | null = null;
+    private lastProjectKey: string | null = null;
 
     ngOnInit() {
         this.updateMenu();
@@ -39,42 +44,64 @@ export class AppMenu implements OnInit {
             .subscribe(() => this.updateMenu());
     }
 
+    /**
+     * Decide menu type by the current URL's first segment per the D-0001
+     * dispatch rule:
+     *   - segment contains "." → forge canonical → project menu
+     *   - segment starts with "~" → handle canonical → project menu
+     *     (handle placeholder for now, but the menu surface still applies)
+     *   - otherwise (landing, auth, settings, …) → default menu
+     *
+     * When the URL is a project URL but coords aren't populated yet
+     * (e.g. the guard hasn't run for this navigation), fall back to default
+     * to avoid rendering an empty project menu.
+     */
     private updateMenu() {
         const url = this.router.url;
-        if (url.startsWith('/project')) {
-            this.model.set(this.buildProjectMenu(url));
-        } else {
-            this.model.set(this.buildDefaultMenu());
+        const firstSeg = (url.split('/')[1] ?? '').split('?')[0].split('#')[0];
+        const isProjectUrl = firstSeg.includes('.') || firstSeg.startsWith('~');
+
+        if (isProjectUrl) {
+            const coords = this.urlScheme.coordinates();
+            if (coords?.kind === 'path') {
+                this.model.set(this.buildProjectMenu(coords));
+                return;
+            }
         }
+        this.model.set(this.buildDefaultMenu());
     }
 
-    private buildProjectMenu(url: string): MenuItem[] {
-        const idParam = new URL(url, 'http://localhost').searchParams.get('id');
-        const queryParams: Record<string, string> = idParam ? { id: idParam } : {};
+    private buildProjectMenu(coords: PathCoordinates): MenuItem[] {
+        const projectRoot = `/${coords.git_host}/${coords.org}/${coords.repo}`;
+        const projectKey = projectRoot;
 
-        if (idParam !== this.lastProjectId) {
-            this.lastProjectId = idParam;
+        if (projectKey !== this.lastProjectKey) {
+            this.lastProjectKey = projectKey;
             this.specChildrenCache.clear();
             this.loadingPaths.clear();
         }
 
         const specTypes = [
-            { label: 'Architecture', icon: 'pi pi-fw pi-sitemap', route: '/project/architecture', dir: 'architecture' },
-            { label: 'Features', icon: 'pi pi-fw pi-list', route: '/project/features', dir: 'features' },
-            { label: 'Plans', icon: 'pi pi-fw pi-map', route: '/project/plans', dir: 'plans' },
-            { label: 'Tests', icon: 'pi pi-fw pi-check-circle', route: '/project/tests', dir: 'tests' },
+            { label: 'Architecture', icon: 'pi pi-fw pi-sitemap', dir: 'architecture' },
+            { label: 'Features', icon: 'pi pi-fw pi-list', dir: 'features' },
+            { label: 'Plans', icon: 'pi pi-fw pi-map', dir: 'plans' },
+            { label: 'Tests', icon: 'pi pi-fw pi-check-circle', dir: 'tests' },
         ];
 
         const specItems: MenuItem[] = specTypes.map(spec => {
             const specPath = `spec/${spec.dir}`;
+            const routerLink = `${projectRoot}/${specPath}`;
             const cached = this.specChildrenCache.get(specPath);
             const item: MenuItem & { path: string } = {
                 label: spec.label,
                 icon: spec.icon,
-                routerLink: [spec.route],
-                queryParams,
+                // Canonical URL with #page= view-selector hash per REQ:page-view-hash.
+                // Navigating here loads the directory's README in ProjectPage; the
+                // #page= hash highlights which spec view is active in the left nav.
+                routerLink: [routerLink],
+                fragment: `page=${spec.dir}`,
                 path: `/spec-${spec.dir}`,
-                command: () => this.loadChildren(specPath, spec.route, idParam, queryParams),
+                command: () => this.loadChildren(specPath, projectRoot, coords, spec.dir),
             };
             if (cached && cached.length > 0) {
                 item.items = cached;
@@ -86,7 +113,7 @@ export class AppMenu implements OnInit {
             {
                 label: 'Project',
                 items: [
-                    { label: 'Overview', icon: 'pi pi-fw pi-home', routerLink: ['/project'], queryParams },
+                    { label: 'Overview', icon: 'pi pi-fw pi-home', routerLink: [projectRoot] },
                 ],
             },
             {
@@ -96,24 +123,29 @@ export class AppMenu implements OnInit {
         ];
     }
 
-    private loadChildren(dirPath: string, parentRoute: string, projectId: string | null, queryParams: Record<string, string>) {
-        if (this.specChildrenCache.has(dirPath) || this.loadingPaths.has(dirPath) || !projectId) return;
-
-        const parsed = this.parseProjectId(projectId);
-        if (!parsed) return;
+    /**
+     * On-demand load child directories under a spec root (e.g. each feature
+     * under spec/features/). Used to populate the menu's expandable tree
+     * when a top-level spec category is opened. Sub-items link to the
+     * canonical URL for that nested directory and carry the same
+     * #page=<spec-category> hash for left-nav highlight consistency.
+     */
+    private loadChildren(dirPath: string, projectRoot: string, coords: PathCoordinates, pageHash: string) {
+        if (this.specChildrenCache.has(dirPath) || this.loadingPaths.has(dirPath)) return;
 
         this.loadingPaths.add(dirPath);
-        this.githubService.fetchDirectoryContents(parsed.owner, parsed.repo, dirPath).subscribe({
+        this.githubService.fetchDirectoryContents(coords.org, coords.repo, dirPath).subscribe({
             next: (entries) => {
                 this.loadingPaths.delete(dirPath);
                 const children: MenuItem[] = entries.map(entry => {
+                    const routerLink = `${projectRoot}/${entry.path}`;
                     const childItem: MenuItem & { path: string } = {
                         label: entry.name,
                         icon: 'pi pi-fw pi-folder',
-                        routerLink: [parentRoute],
-                        queryParams: { ...queryParams, path: entry.path },
+                        routerLink: [routerLink],
+                        fragment: `page=${pageHash}`,
                         path: `/spec-${entry.path}`,
-                        command: () => this.loadChildren(entry.path, parentRoute, projectId, queryParams),
+                        command: () => this.loadChildren(entry.path, projectRoot, coords, pageHash),
                     };
                     const childCached = this.specChildrenCache.get(entry.path);
                     if (childCached && childCached.length > 0) {
@@ -136,12 +168,6 @@ export class AppMenu implements OnInit {
                 this.specChildrenCache.set(dirPath, []);
             },
         });
-    }
-
-    private parseProjectId(id: string): { owner: string; repo: string } | null {
-        const match = id.match(/^([^@]+)@([^@]+)@([^@]+)$/);
-        if (!match) return null;
-        return { owner: match[2], repo: match[1] };
     }
 
     private buildDefaultMenu(): MenuItem[] {
