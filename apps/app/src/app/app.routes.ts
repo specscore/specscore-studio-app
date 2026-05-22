@@ -33,18 +33,28 @@ export const appRoutes: Routes = [
             // Canonical handle shape per studio-url-scheme:
             // /app/~{handle}[/{path}]
             // Declared before the path matcher so `~`-prefixed URLs dispatch here.
+            // runGuardsAndResolvers:'always' so the guard re-parses coordinates
+            // when the URL path changes within the same matched route (e.g.
+            // navigating from /app/~acme to /app/~acme/spec/features keeps the
+            // same component instance but needs fresh coords for the page).
             {
                 matcher: handlePathMatcher,
                 canActivate: [urlSchemeGuard],
+                runGuardsAndResolvers: 'always',
                 loadComponent: () => import('./pages/project/project-page').then(m => m.ProjectPage),
             },
             // Canonical path shape per studio-url-scheme:
             // /app/{git_host}/{org}/{repo}[/{path}]
             // The matcher accepts 3+ segments and requires segment 0 to contain `.`
             // (REQ:first-segment-dispatch); urlSchemeGuard parses and validates.
+            // Same runGuardsAndResolvers reasoning as the handle route above —
+            // navigating from /app/{host}/{org}/{repo} to /app/{host}/{org}/{repo}/spec/features
+            // is the same matched route with different segments; the guard must
+            // re-run so coordinates update.
             {
                 matcher: canonicalPathMatcher,
                 canActivate: [urlSchemeGuard],
+                runGuardsAndResolvers: 'always',
                 loadComponent: () => import('./pages/project/project-page').then(m => m.ProjectPage),
             },
         ]

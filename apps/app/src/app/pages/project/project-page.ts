@@ -124,18 +124,26 @@ export class ProjectPage {
   private repo = '';
   private path = '';
   private ref: string | undefined;
-  private loaded = false;
+  /** Cache key for the most-recent successful coordinate apply, so the
+   *  reactive effect can skip re-fetching when only ?op/#page changed
+   *  (same underlying content). */
+  private lastLoadKey: string | null = null;
 
   constructor() {
+    // Reactive effect: re-runs whenever auth state changes OR the
+    // UrlSchemeCoordinatesService signal updates. The guard updates that
+    // signal on every URL change (canonical routes use
+    // runGuardsAndResolvers:'always'), so navigating between paths within
+    // the same project URL re-fetches content even though Angular reuses
+    // this ProjectPage instance.
     effect(() => {
       if (!this.authService.authReady()) return;
-      if (this.loaded) return;
-      this.loaded = true;
-      this.init();
+      const coords = this.urlScheme.coordinates();
+      this.applyCoordinates(coords);
     });
   }
 
-  private init() {
+  private applyCoordinates(coords: ReturnType<UrlSchemeCoordinatesService['coordinates']>) {
     if (!this.authService.isAuthenticated()) {
       this.state.set('not_authenticated');
       return;
@@ -144,7 +152,6 @@ export class ProjectPage {
     // ProjectPage consumes parsed coordinates produced by urlSchemeGuard
     // (plan studio-url-scheme). The canonical URL contract is the only
     // supported input — no legacy `?id=` fallback exists.
-    const coords = this.urlScheme.coordinates();
     if (!coords) {
       this.state.set('error');
       this.errorMessage.set('This page must be opened from a canonical project URL.');
@@ -153,16 +160,23 @@ export class ProjectPage {
 
     // Reflect ?op and #page= on the host element so AC:op-routes-to-operation
     // and AC:page-hash-selects-view are observable from Playwright/CSS
-    // regardless of which URL shape the route took.
+    // regardless of which URL shape the route took. These update on every
+    // coords change without triggering a content re-fetch.
     this.op.set(coords.op ?? 'read');
     this.page.set(this.readPageHash());
 
     if (coords.kind === 'path') {
+      // De-dupe key includes path + ref so a ?ref change does refetch but a
+      // ?op or #page change doesn't (same underlying README at same revision).
+      const loadKey = `path:${coords.git_host}/${coords.org}/${coords.repo}/${coords.path}@${coords.ref ?? ''}`;
+      if (loadKey === this.lastLoadKey) return;
+      this.lastLoadKey = loadKey;
       this.owner = coords.org;
       this.repo = coords.repo;
       this.path = coords.path;
       this.displayPath.set(coords.path);
       this.ref = coords.ref ?? this.inferAndPersistRef();
+      this.state.set('loading');
       this.loadContent(false);
       return;
     }
@@ -170,6 +184,9 @@ export class ProjectPage {
     // Handle shape: route shape reserved per REQ:handle-canonical-route but
     // resolution to a concrete forge repository is deferred to a future
     // Feature. No error chrome for the parsed shape itself.
+    const handleKey = `handle:${coords.handle}/${coords.path}`;
+    if (handleKey === this.lastLoadKey) return;
+    this.lastLoadKey = handleKey;
     this.handleLabel.set(`~${coords.handle}${coords.path ? '/' + coords.path : ''}`);
     this.state.set('handle_unresolved');
   }
@@ -181,8 +198,10 @@ export class ProjectPage {
 
   async signInWithGitHub() {
     await this.authService.signInWithGitHub();
-    this.loaded = false;
-    this.init();
+    // Force the next applyCoordinates() to re-fetch even if the URL hasn't
+    // changed (auth just transitioned, content might now be accessible).
+    this.lastLoadKey = null;
+    this.applyCoordinates(this.urlScheme.coordinates());
   }
 
   /**
