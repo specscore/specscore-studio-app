@@ -11,6 +11,13 @@
   },
   "routes": [
     { "pattern": "specscore.studio/app", "zone_name": "specscore.studio" },
-    { "pattern": "specscore.studio/app/*", "zone_name": "specscore.studio" }
+    { "pattern": "specscore.studio/app/*", "zone_name": "specscore.studio" },
+    // Legacy /project?id=... URLs: the Worker 302-redirects valid ids to
+    // the canonical /app/project/{git_host}/{org}/{repo} form per
+    // REQ:legacy-id-redirect (spec/features/studio-url-scheme). Malformed
+    // ids fall through to the SPA fallback so UnsupportedSourceComponent
+    // renders client-side per AC:legacy-id-malformed-rejected.
+    { "pattern": "specscore.studio/project", "zone_name": "specscore.studio" },
+    { "pattern": "specscore.studio/project*", "zone_name": "specscore.studio" }
   ]
 }

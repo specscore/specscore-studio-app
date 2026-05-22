@@ -98,3 +98,75 @@ describe('worker fetch handler — Referrer-Policy header (REQ:referrer-policy-s
     expect(response.headers.get('Cache-Control')).toBe('public, max-age=3600');
   });
 });
+
+describe('worker fetch handler — legacy /project?id=... redirect (REQ:legacy-id-redirect)', () => {
+  function noopAssets(): AssetsBinding {
+    return { fetch: vi.fn().mockResolvedValue(new Response('', { status: 200 })) };
+  }
+
+  it('302-redirects a well-formed legacy id to the canonical path', async () => {
+    const response = await worker.fetch(
+      new Request('https://specscore.studio/project?id=specscore@specscore@github.com', {
+        redirect: 'manual',
+      }),
+      { ASSETS: noopAssets() },
+    );
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('/app/project/github.com/specscore/specscore');
+  });
+
+  it('emits Referrer-Policy: strict-origin on the legacy redirect response', async () => {
+    const response = await worker.fetch(
+      new Request('https://specscore.studio/project?id=foo@bar@github.com', {
+        redirect: 'manual',
+      }),
+      { ASSETS: noopAssets() },
+    );
+    expect(response.headers.get('Referrer-Policy')).toBe('strict-origin');
+  });
+
+  it('does NOT 302 a malformed id; serves the SPA fallback (AC:legacy-id-malformed-rejected)', async () => {
+    const indexResponse = new Response('<html><body>SPA</body></html>', {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' },
+    });
+    const spy = vi.fn().mockResolvedValue(indexResponse);
+    const response = await worker.fetch(
+      new Request('https://specscore.studio/project?id=not-a-valid-id'),
+      { ASSETS: { fetch: spy } },
+    );
+    expect(response.status).toBe(200);
+    expect(response.status).not.toBe(302);
+    expect(response.headers.get('Location')).toBeNull();
+    expect(response.headers.get('Referrer-Policy')).toBe('strict-origin');
+    // The ASSETS binding was asked for /index.html so the SPA bootstraps.
+    expect(String(spy.mock.calls[0][0].url)).toContain('/index.html');
+  });
+
+  it('rejects an id with an empty token as malformed', async () => {
+    const indexResponse = new Response('<html></html>', { status: 200 });
+    const response = await worker.fetch(
+      new Request('https://specscore.studio/project?id=foo@@github.com'),
+      { ASSETS: { fetch: vi.fn().mockResolvedValue(indexResponse) } },
+    );
+    expect(response.status).not.toBe(302);
+  });
+
+  it('rejects an id with too many @ tokens as malformed', async () => {
+    const indexResponse = new Response('<html></html>', { status: 200 });
+    const response = await worker.fetch(
+      new Request('https://specscore.studio/project?id=a@b@c@d'),
+      { ASSETS: { fetch: vi.fn().mockResolvedValue(indexResponse) } },
+    );
+    expect(response.status).not.toBe(302);
+  });
+
+  it('rejects a missing id query parameter as malformed', async () => {
+    const indexResponse = new Response('<html></html>', { status: 200 });
+    const response = await worker.fetch(
+      new Request('https://specscore.studio/project'),
+      { ASSETS: { fetch: vi.fn().mockResolvedValue(indexResponse) } },
+    );
+    expect(response.status).not.toBe(302);
+  });
+});

@@ -7,13 +7,25 @@ import {
 } from '@/app/core/routing/url-scheme.guard';
 
 export default [
+  // Bare /project renders the unsupported-source component. This serves two
+  // cases per spec/features/studio-url-scheme:
+  //   1. A user navigates to /app/project with no further segments — the
+  //      canonical scheme requires /{git_host}/{org}/{repo}, so this is
+  //      meaningless. Show unsupported-source.
+  //   2. The Worker handles legacy /project?id=... URLs (REQ:legacy-id-redirect):
+  //      valid ids 302 to the canonical form; malformed ids fall through
+  //      to the SPA fallback, which lands Angular at /project. This route
+  //      catches that case so AC:legacy-id-malformed-rejected is observable
+  //      (the page renders unsupported-source, not a 404).
+  {
+    path: '',
+    loadComponent: () =>
+      import('./unsupported-source').then(m => m.UnsupportedSourceComponent),
+  },
   // NOTE: literal sub-route paths MUST be declared BEFORE the canonical-path
   // matcher below — otherwise the matcher would consume e.g. /project/features
   // as `{git_host: 'features'}` instead of routing to ProjectSpecPage.
   //
-  // The bare `/project` route used to serve a legacy `?id=` URL form. That
-  // contract is gone — canonical /project/{git_host}/{org}/{repo} is now the
-  // only entry point, and a bare `/project` falls through to the global 404.
   // ProjectSpecPage's sibling routes below (features/plans/etc.) still use
   // their own pre-canonical scheme; cleaning those up is out of scope for
   // this Plan and belongs in a follow-up.
