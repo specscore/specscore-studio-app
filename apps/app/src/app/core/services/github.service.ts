@@ -1,5 +1,6 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable, from, of } from 'rxjs';
+import { AuthService } from './auth.service';
 
 interface CacheEntry {
   html: string;
@@ -21,8 +22,24 @@ const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 @Injectable({ providedIn: 'root' })
 export class GitHubService {
+  private readonly authService = inject(AuthService);
   private readonly cache = new Map<string, CacheEntry>();
   private readonly dirCache = new Map<string, DirCacheEntry>();
+
+  /**
+   * Build request headers including the user's GitHub OAuth token when
+   * available. Without the Authorization header, GitHub caps the app at
+   * 60 unauthenticated requests per hour per IP — easily exhausted by a
+   * single session of menu browsing, surfacing as 403 "rate limit
+   * exceeded" responses to the user. With the token, the per-user limit
+   * is 5000/hr.
+   */
+  private buildHeaders(accept: string): Record<string, string> {
+    const headers: Record<string, string> = { Accept: accept };
+    const token = this.authService.githubAccessToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+  }
 
   fetchReadmeHtml(owner: string, repo: string, skipCache = false, ref?: string): Observable<string> {
     // ref is part of the cache key so /readme@main and /readme@feature-x
@@ -44,11 +61,7 @@ export class GitHubService {
     const refQuery = ref ? `?ref=${encodeURIComponent(ref)}` : '';
     const response = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/readme${refQuery}`,
-      {
-        headers: {
-          Accept: 'application/vnd.github.html+json',
-        },
-      }
+      { headers: this.buildHeaders('application/vnd.github.html+json') },
     );
 
     if (!response.ok) {
@@ -56,7 +69,7 @@ export class GitHubService {
         throw new GitHubApiError('not_found', 'This repository does not have a README.md');
       }
       if (response.status === 403) {
-        throw new GitHubApiError('forbidden', 'You don\'t have access to this repository');
+        throw new GitHubApiError('forbidden', this.forbidden403Message(response));
       }
       throw new GitHubApiError('unknown', `GitHub API error: ${response.status}`);
     }
@@ -90,11 +103,7 @@ export class GitHubService {
   private async fetchFileHtmlAsync(owner: string, repo: string, path: string): Promise<string> {
     const response = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}`,
-      {
-        headers: {
-          Accept: 'application/vnd.github.html+json',
-        },
-      }
+      { headers: this.buildHeaders('application/vnd.github.html+json') },
     );
 
     if (!response.ok) {
@@ -102,7 +111,7 @@ export class GitHubService {
         throw new GitHubApiError('not_found', 'File not found');
       }
       if (response.status === 403) {
-        throw new GitHubApiError('forbidden', 'You don\'t have access to this repository');
+        throw new GitHubApiError('forbidden', this.forbidden403Message(response));
       }
       throw new GitHubApiError('unknown', `GitHub API error: ${response.status}`);
     }
@@ -112,12 +121,32 @@ export class GitHubService {
     return html;
   }
 
+  /**
+   * Disambiguate the two 403 cases GitHub returns. Without this, a rate-limit
+   * 403 (the most common cause for an authenticated app hitting public repos
+   * unauthenticated) misleads the user with "You don't have access to this
+   * repository" — they DO have access, the app just blew through its 60/hr
+   * shared unauthenticated quota. After this fix, signed-in users get the
+   * per-user 5000/hr limit; the rate-limit message still surfaces honestly
+   * if it does happen.
+   */
+  private forbidden403Message(response: Response): string {
+    const remaining = response.headers.get('x-ratelimit-remaining');
+    if (remaining === '0') {
+      const resetEpoch = Number(response.headers.get('x-ratelimit-reset') ?? 0);
+      if (resetEpoch > 0) {
+        const minutes = Math.max(1, Math.ceil((resetEpoch * 1000 - Date.now()) / 60_000));
+        return `GitHub API rate limit reached. Try again in ~${minutes} minute(s), or sign in again to refresh your access token.`;
+      }
+      return 'GitHub API rate limit reached. Try signing in again to refresh your access token.';
+    }
+    return "You don't have access to this repository.";
+  }
+
   private async fetchDirectoryContentsAsync(owner: string, repo: string, path: string): Promise<GitHubDirectoryEntry[]> {
     const response = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}`,
-      {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-      }
+      { headers: this.buildHeaders('application/vnd.github.v3+json') },
     );
 
     if (!response.ok) {

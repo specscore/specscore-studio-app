@@ -15,6 +15,16 @@ import { FIREBASE_AUTH, FIRESTORE, FIRESTORE_OPS } from '@/app/core/firebase/fir
 import { CachedUserService } from '@/app/core/services/cached-user.service';
 import { UserRecord } from '@/app/core/models/user-record.model';
 
+/**
+ * sessionStorage key for the GitHub OAuth access token captured from the
+ * sign-in popup. sessionStorage scope (per-tab, cleared on close) is the
+ * conservative default for an XSS-vulnerable token surface — localStorage
+ * would survive across tabs but persists indefinitely and leaks more on
+ * compromise. Trade-off accepted: tab reload survives, browser restart
+ * forces re-sign-in to recover the token.
+ */
+const GITHUB_TOKEN_STORAGE_KEY = 'github.access_token';
+
 @Injectable({ providedIn: 'root' })
 export class AuthService implements OnDestroy {
   private readonly auth = inject(FIREBASE_AUTH);
@@ -25,6 +35,24 @@ export class AuthService implements OnDestroy {
   private unsubscribeUserDoc: (() => void) | null = null;
 
   readonly authReady = signal(false);
+
+  /**
+   * The user's GitHub OAuth access token, captured at sign-in time and
+   * restored from sessionStorage across reloads. Used by GitHubService
+   * to authenticate REST API calls so the app gets the per-user 5000/hr
+   * rate limit instead of the shared 60/hr unauthenticated tier (which
+   * runs out fast and surfaces as "You don't have access to this
+   * repository" 403s).
+   *
+   * Null when the user is signed out OR signed in with a non-GitHub
+   * provider OR signed in via Firebase persistence after a browser
+   * restart (sessionStorage gone). In the third case, the user must
+   * sign in again to refresh the token; we don't auto-renew silently.
+   */
+  private readonly _githubAccessToken = signal<string | null>(
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(GITHUB_TOKEN_STORAGE_KEY) : null,
+  );
+  readonly githubAccessToken = this._githubAccessToken.asReadonly();
 
   readonly user$ = new Observable<User | null>((subscriber) => {
     this.unsubscribe = onAuthStateChanged(
@@ -43,7 +71,18 @@ export class AuthService implements OnDestroy {
   readonly isAuthenticated = computed(() => this.user() !== null);
 
   async signInWithGitHub(): Promise<void> {
-    await signInWithPopup(this.auth, new GithubAuthProvider());
+    const result = await signInWithPopup(this.auth, new GithubAuthProvider());
+    // Capture the GitHub OAuth access token from the popup credential and
+    // persist it for the lifetime of this tab. Firebase Auth doesn't store
+    // the third-party provider token after the popup closes — without this
+    // capture, every subsequent GitHub API request would be unauthenticated
+    // (60/hr per IP, shared with all visitors).
+    const credential = GithubAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken ?? null;
+    if (token) {
+      this._githubAccessToken.set(token);
+      sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
+    }
     void this.syncCurrentUser();
   }
 
@@ -63,6 +102,8 @@ export class AuthService implements OnDestroy {
   }
 
   async signOut(): Promise<void> {
+    this._githubAccessToken.set(null);
+    sessionStorage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
     await signOut(this.auth);
   }
 

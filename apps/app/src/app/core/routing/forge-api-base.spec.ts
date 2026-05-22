@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { FORGE_API_BASES, forgeApiBase } from './forge-api-base';
 import { ALLOWED_FORGE_HOSTS } from './forge-host.allowlist';
 import { GitHubService } from '@/app/core/services/github.service';
+import { AuthService } from '@/app/core/services/auth.service';
 
 describe('forgeApiBase', () => {
   it('maps github.com to the GitHub REST API base', () => {
@@ -43,7 +44,16 @@ describe('GitHubService outbound URL (REQ:no-host-templating-in-fetch audit)', (
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    // GitHubService injects AuthService for OAuth-token-based auth on
+    // outbound requests (per the unauthenticated-rate-limit fix). Stub
+    // it with a minimal shape: no token → buildHeaders() skips the
+    // Authorization header. The tests in this file pin only the URL
+    // structure, so header content is irrelevant here.
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthService, useValue: { githubAccessToken: () => null } },
+      ],
+    });
     service = TestBed.inject(GitHubService);
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('<p>readme</p>', { status: 200 }),
