@@ -2,7 +2,7 @@
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/project-page?op=explore) | [Edit](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/project-page?op=edit) | [Ask question](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/project-page?op=ask) | [Request change](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/project-page?op=request-change) |
 
-**Status:** Conceptual
+**Status:** Approved
 **Date:** 2026-05-22
 **Owner:** alexander.trakhimenok@gmail.com
 **Source Ideas:** —
@@ -85,25 +85,48 @@ A node with children MUST render a chevron control distinct from the node's text
 
 The menu node whose URL matches the current route MUST receive visual highlighting (via `routerLinkActive` or equivalent) so the user can see where they are in the tree.
 
-### README content area
+### Content area
 
-The default `/project` route displays the root `README.md` from the project's main GitHub repository.
+The content area renders one of three things, chosen by the parsed `{path}` from the URL:
 
-**Data source:** GitHub REST API `GET /repos/:owner/:repo/readme` with `Accept: application/vnd.github.raw+json`, using the user's linked GitHub OAuth token.
+| `{path}` shape | Rendered content | GitHub endpoint |
+|---|---|---|
+| Empty | The repository's default README | `GET /repos/:owner/:repo/readme` |
+| Last segment contains a `.` (treated as a file, e.g. `spec/features/login.md`) | The file's rendered content | `GET /repos/:owner/:repo/contents/{path}` |
+| Last segment has no `.` (treated as a directory, e.g. `spec/features/cli`) | The directory's `README.md` | `GET /repos/:owner/:repo/contents/{path}/README.md` |
 
-**Rendering:** Raw Markdown is rendered client-side to HTML using a Markdown library (e.g., `ngx-markdown` or `marked`).
+The file-vs-directory choice is a heuristic on the final segment's extension — there is no upfront API call to inspect the path's type.
 
-**States:**
+#### REQ: content-fetch-uses-server-rendered-html
 
-| State | Display |
-|---|---|
-| Authenticated, README loaded | Rendered Markdown content |
-| Authenticated, loading | Loading spinner or skeleton |
-| Authenticated, 404 (no README) | "This repository does not have a README.md" message |
-| Authenticated, 403 (no access) | "You don't have access to this repository" message |
-| Not authenticated / no GitHub token | "Sign in with GitHub to view project content" prompt |
+The page MUST request HTML directly from GitHub (`Accept: application/vnd.github.html+json`) rather than fetching raw Markdown and rendering it client-side. This delegates the Markdown dialect, syntax-highlighting, and emoji rendering to GitHub's renderer — matching what users see on GitHub.com — and keeps a Markdown parser out of the SPA bundle. The returned HTML is bound via `[innerHTML]` and the response stream is treated as trusted (GitHub renders the file's source under its own sanitization rules).
 
-No client-side caching for MVP — the README is fetched on each page visit.
+#### REQ: content-fetch-respects-ref
+
+Fetches MUST append `?ref={ref}` when the URL carries a `?ref` query parameter (REQ:ref-query-param in studio-url-scheme). Absent `?ref`, GitHub resolves against the default branch.
+
+#### REQ: content-relative-image-rewriting
+
+Relative `<img src="...">` attributes in the returned HTML MUST be rewritten to absolute `https://raw.githubusercontent.com/{owner}/{repo}/HEAD/...` URLs so images authored against the repository render in the SPA. Absolute `http(s)://` image URLs MUST pass through unchanged.
+
+#### REQ: content-client-cache
+
+Fetched content MUST be cached client-side keyed by `(owner, repo, path, ref)` with a 10-minute TTL. Subsequent identical requests within the TTL window MUST serve from cache without a network call. A manual refresh action MUST bypass the cache (`skipCache=true`).
+
+#### REQ: content-states
+
+The content area MUST render one of the following observable states based on auth and fetch outcome:
+
+| State | Trigger | Display |
+|---|---|---|
+| `not_authenticated` | User is not signed in OR has no linked GitHub identity | "Sign in with GitHub to view project content" prompt with sign-in button |
+| `loading` | Fetch in flight | Spinner (PrimeNG `pi-spinner` animated) |
+| `loaded` | Fetch succeeded | Rendered HTML in a `.markdown-body` container with a refresh button in the header showing the addressed `{path}` (or `README` for the bare-repo case) |
+| `no_readme` | Fetch returned HTTP 404 against a directory-style path's `{path}/README.md` | "No README.md found at this location." with the requested path |
+| `error` | Fetch failed for any other reason (403, network, JSON parse, etc.) | Plain-language error message — e.g. "You don't have access to this repository" for 403, "Failed to load README." for other failures. Raw exception details stay in `console.error`. |
+| `handle_unresolved` | URL is the handle-shape `/app/~{handle}[/{path}]` (resolver deferred per studio-url-scheme REQ:handle-canonical-route) | Neutral "Handle resolution is coming soon" placeholder; no error chrome per studio-url-scheme AC:handle-canonical-parses |
+
+The states MUST follow the workspace's "no silent failures" rule (CLAUDE.md): every fetch failure produces a user-visible state, not a stuck spinner or console-only log.
 
 ### Navigation from Home
 
@@ -140,19 +163,54 @@ ProjectSpecPage's responsibilities (rendering directory READMEs) were folded int
 
 ## Acceptance Criteria
 
-### AC: authenticated-readme-rendered
+### AC: authenticated-readme-rendered (verifies REQ:content-fetch-uses-server-rendered-html, REQ:content-states)
 
 Scenario: an authenticated user lands on a project page and sees the rendered README
 **Given** the user is signed in with a linked GitHub identity that can read the target repository
-**When** the user navigates to `/app/project/github.com/owner/repo`
-**Then** the page fetches the repository README via the GitHub API and renders it as HTML in the main content area
+**When** the user navigates to `/app/github.com/owner/repo`
+**Then** the page issues a GitHub API request to `https://api.github.com/repos/owner/repo/readme` with `Accept: application/vnd.github.html+json`, and the returned HTML renders in the main content area (state = `loaded`)
 
-### AC: unauthenticated-prompts-signin
+### AC: directory-renders-its-readme (verifies REQ:content-fetch-uses-server-rendered-html, REQ:content-states)
+
+Scenario: a directory URL renders the directory's README.md
+**Given** the user is on `/app/github.com/owner/repo/spec/features` and `spec/features/README.md` exists in the repository
+**When** the page bootstraps
+**Then** the page issues a GitHub API request to `https://api.github.com/repos/owner/repo/contents/spec/features/README.md` and renders the returned HTML (state = `loaded`). A directory whose README is absent renders state = `no_readme` with the directory path shown in the empty-state message.
+
+### AC: file-url-renders-file-content (verifies REQ:content-fetch-uses-server-rendered-html)
+
+Scenario: a file URL renders the file's HTML directly
+**Given** the user is on `/app/github.com/owner/repo/spec/features/login.md`
+**When** the page bootstraps
+**Then** the page issues a GitHub API request to `https://api.github.com/repos/owner/repo/contents/spec/features/login.md` (NOT `/login.md/README.md`) and renders the returned HTML
+
+### AC: ref-pinned-fetch (verifies REQ:content-fetch-respects-ref)
+
+Scenario: a `?ref` query param pins the fetch to that ref
+**Given** the user is on `/app/github.com/owner/repo?ref=feature/x`
+**When** the page bootstraps
+**Then** the GitHub API request includes `?ref=feature%2Fx` in its query string, and the returned content is the README at that ref
+
+### AC: relative-images-rewritten (verifies REQ:content-relative-image-rewriting)
+
+Scenario: relative image URLs in the README are rewritten to absolute URLs
+**Given** a repository README contains `<img src="docs/screenshot.png">`
+**When** the page renders that README's HTML
+**Then** the rendered `<img>` element's `src` attribute is `https://raw.githubusercontent.com/{owner}/{repo}/HEAD/docs/screenshot.png` (absolute), while `<img src="https://example.com/foo.png">` (already absolute) is unchanged
+
+### AC: content-cached-within-ttl (verifies REQ:content-client-cache)
+
+Scenario: a repeat visit within the cache TTL serves from memory
+**Given** the page just fetched the README for `(owner, repo, path, ref)` and cached the response
+**When** the user navigates away and returns to the same URL within 10 minutes
+**Then** no network request is issued — the cached HTML renders immediately. Clicking the in-card refresh button bypasses the cache and issues a fresh request.
+
+### AC: unauthenticated-prompts-signin (verifies REQ:content-states)
 
 Scenario: an unauthenticated visitor is prompted to sign in
 **Given** the user is not signed in (or has no linked GitHub identity)
-**When** the user navigates to `/app/project/github.com/owner/repo`
-**Then** the main content area renders the "Sign in with GitHub to view project content" prompt instead of attempting a GitHub API call
+**When** the user navigates to `/app/github.com/owner/repo`
+**Then** the main content area renders the "Sign in with GitHub to view project content" prompt (state = `not_authenticated`) instead of attempting a GitHub API call
 
 ### AC: sidebar-shows-project-menu (verifies REQ:menu-canonical-link-shape)
 

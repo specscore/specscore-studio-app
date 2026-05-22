@@ -6,7 +6,7 @@
 |---------|--------|-------------|
 | [authentication](authentication/README.md) | Conceptual | GitHub OAuth via Firebase Auth with incremental scope upgrades |
 | [home-page](home-page/README.md) | Conceptual | Default view for visitors — card grid for discovery and onboarding |
-| [project-page](project-page/README.md) | Conceptual | Project view showing GitHub README with sidebar navigation to specs and runners |
+| [project-page](project-page/README.md) | Approved | Project view showing GitHub README with sidebar navigation to specs and runners |
 | [studio-url-scheme](studio-url-scheme/README.md) | Approved | Canonical deep-link URL contract: routes, query params, legacy redirect, forge-host allow-list, path validation |
 | [user-auth-card](user-auth-card/README.md) | Conceptual | Auth-state-aware card showing linked providers when signed in |
 
