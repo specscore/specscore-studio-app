@@ -99,6 +99,7 @@ export class AppMenu implements OnInit {
         const specItems: MenuItem[] = specTypes.map(spec => {
             const specPath = `spec/${spec.dir}`;
             const routerLink = `${projectRoot}/${specPath}`;
+            const fragment = `page=${spec.dir}`;
             const item: MenuItem & { path: string } = {
                 label: spec.label,
                 icon: spec.icon,
@@ -106,9 +107,17 @@ export class AppMenu implements OnInit {
                 // Navigating here loads the directory's README in ProjectPage; the
                 // #page= hash highlights which spec view is active in the left nav.
                 routerLink: [routerLink],
-                fragment: `page=${spec.dir}`,
+                fragment,
                 path: `/spec-${spec.dir}`,
-                command: () => this.loadChildren(specPath, coords),
+                // Command also navigates programmatically because PrimeNG's
+                // AppMenuitem template only binds [routerLink] when the item
+                // has no children — once this Features/Plans/etc. entry has
+                // children loaded, clicking it would otherwise only toggle
+                // expansion. The programmatic nav covers both states.
+                command: () => {
+                    this.loadChildren(specPath, coords);
+                    this.router.navigate([routerLink], { fragment });
+                },
             };
             const subItems = this.buildChildItems(specPath, projectRoot, coords, spec.dir);
             if (subItems && subItems.length > 0) {
@@ -156,15 +165,22 @@ export class AppMenu implements OnInit {
     ): MenuItem[] | undefined {
         const entries = this.specChildrenCache.get(dirPath);
         if (!entries) return undefined;
+        const fragment = `page=${pageHash}`;
         return entries.map(entry => {
             const routerLink = `${projectRoot}/${entry.path}`;
             const childItem: MenuItem & { path: string } = {
                 label: entry.name,
                 icon: 'pi pi-fw pi-folder',
                 routerLink: [routerLink],
-                fragment: `page=${pageHash}`,
+                fragment,
                 path: `/spec-${entry.path}`,
-                command: () => this.loadChildren(entry.path, coords),
+                // Command navigates programmatically — same reason as the
+                // top-level spec items: AppMenuitem's first template branch
+                // (which fires when hasChildren) doesn't render [routerLink].
+                command: () => {
+                    this.loadChildren(entry.path, coords);
+                    this.router.navigate([routerLink], { fragment });
+                },
             };
             const grandchildren = this.buildChildItems(entry.path, projectRoot, coords, pageHash);
             if (grandchildren && grandchildren.length > 0) {

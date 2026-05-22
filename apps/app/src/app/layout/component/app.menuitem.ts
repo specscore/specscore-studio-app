@@ -20,7 +20,15 @@ import { filter } from 'rxjs/operators';
                     <span class="layout-menuitem-badge">{{ item().badge }}</span>
                 }
                 @if (hasChildren()) {
-                    <i class="pi pi-fw pi-angle-down layout-submenu-toggler"></i>
+                    <!-- Chevron handles expand/collapse independently of the
+                         text click. Text click navigates + ensures expanded;
+                         the chevron toggles between expanded and collapsed
+                         without navigating. -->
+                    <i class="pi pi-fw pi-angle-down layout-submenu-toggler"
+                       (click)="toggleClick($event)"
+                       role="button"
+                       [attr.aria-label]="isActive() ? 'Collapse ' + item().label : 'Expand ' + item().label"
+                       [attr.aria-expanded]="isActive()"></i>
                 }
             </a>
         }
@@ -203,18 +211,15 @@ export class AppMenuitem implements OnInit, AfterViewInit {
         }
 
         if (this.hasChildren()) {
-            if (this.isActive()) {
-                this.layoutService.layoutState.update((val) => ({
-                    ...val,
-                    activePath: this.parentPath()
-                }));
-            } else {
-                this.layoutService.layoutState.update((val) => ({
-                    ...val,
-                    activePath: this.fullPath(),
-                    menuHoverActive: true
-                }));
-            }
+            // Text click ALWAYS expands (never collapses). Collapsing is
+            // reserved for the chevron toggle so users don't accidentally
+            // hide content they just selected. Setting activePath to
+            // fullPath() is idempotent when already expanded.
+            this.layoutService.layoutState.update((val) => ({
+                ...val,
+                activePath: this.fullPath(),
+                menuHoverActive: true
+            }));
         } else {
             this.layoutService.layoutState.update((val) => ({
                 ...val,
@@ -222,6 +227,29 @@ export class AppMenuitem implements OnInit, AfterViewInit {
                 staticMenuMobileActive: false,
                 mobileMenuActive: false,
                 menuHoverActive: false
+            }));
+        }
+    }
+
+    /**
+     * Chevron click — toggles expand/collapse without navigating. Stops
+     * propagation so the surrounding <a>'s itemClick handler (which
+     * navigates and forces-expanded) doesn't also fire.
+     */
+    toggleClick(event: Event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!this.hasChildren()) return;
+        if (this.isActive()) {
+            this.layoutService.layoutState.update((val) => ({
+                ...val,
+                activePath: this.parentPath()
+            }));
+        } else {
+            this.layoutService.layoutState.update((val) => ({
+                ...val,
+                activePath: this.fullPath(),
+                menuHoverActive: true
             }));
         }
     }
