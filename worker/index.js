@@ -15,6 +15,30 @@
 // The Astro marketing site (specscore-studio) keeps its catch-all route
 // `specscore.studio/*` unchanged. Cloudflare's more-specific route wins, so
 // `/app/*` requests come here and everything else falls through to studio.
+//
+// Security headers
+// ----------------
+// Every response carries `Referrer-Policy: strict-origin` per
+// REQ:referrer-policy-strict-origin (spec/features/studio-url-scheme). This
+// prevents private {org}/{repo}/{path} segments from leaking via the Referer
+// header when a user follows a third-party link out of Studio.
+
+const SECURITY_HEADERS = {
+  'Referrer-Policy': 'strict-origin',
+};
+
+/** Clone a Response and append the security headers. */
+function withSecurityHeaders(response) {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    headers.set(name, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 export default {
   async fetch(request, env) {
@@ -36,9 +60,10 @@ export default {
     if (assetResponse.status === 404) {
       const indexUrl = new URL(request.url);
       indexUrl.pathname = '/index.html';
-      return env.ASSETS.fetch(new Request(indexUrl, request));
+      const fallback = await env.ASSETS.fetch(new Request(indexUrl, request));
+      return withSecurityHeaders(fallback);
     }
 
-    return assetResponse;
+    return withSecurityHeaders(assetResponse);
   },
 };
