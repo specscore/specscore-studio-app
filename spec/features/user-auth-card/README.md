@@ -1,8 +1,14 @@
+---
+format: https://specscore.md/feature-specification
+status: Conceptual
+---
+
 # Feature: User Auth Card
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=explore) | [Edit](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=edit) | [Ask question](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=ask) | [Request change](https://specscore.studio/app/github.com/specscore/specscore-studio-app/spec/features/user-auth-card?op=request-change) |
 
 **Status:** Conceptual
+**Source Ideas:** —
 
 ## Summary
 

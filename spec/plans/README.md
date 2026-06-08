@@ -1,3 +1,7 @@
+---
+format: https://specscore.md/plans-index-specification
+---
+
 # SpecScore Plans
 
 Plans turn approved Features into ordered, lint-clean implementation tasks. See the [Plan feature](https://specscore.md/plan-specification) for the artifact schema.

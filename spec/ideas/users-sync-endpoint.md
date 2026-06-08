@@ -1,3 +1,8 @@
+---
+format: https://specscore.md/idea-specification
+status: Draft
+---
+
 # Idea: Backend endpoint for user record sync
 
 **Status:** Draft

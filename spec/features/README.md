@@ -1,3 +1,7 @@
+---
+format: https://specscore.md/features-index-specification
+---
+
 # Features
 
 ## Index
