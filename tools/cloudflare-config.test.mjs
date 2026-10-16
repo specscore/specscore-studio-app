@@ -34,7 +34,7 @@ test('no Worker script; unmatched navigations get the SPA shell', () => {
 });
 
 test('Angular output is built under the /app/ mount path', () => {
-  const options = JSON.parse(read('apps/app/project.json')).targets.build
+  const options = JSON.parse(read('apps/app/project.json')).targets['build-app']
     .options;
   assert.equal(options.baseHref, '/app/');
   assert.deepEqual(options.outputPath, {
