@@ -1,13 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "specscore-studio-app",
-  "main": "worker/index.js",
   "compatibility_date": "2026-05-15",
+  // Assets-only: NO Worker script. Static asset requests are free and never
+  // count against the Workers request quota. The Angular build emits everything
+  // under /app/ (baseHref + outputPath dist/apps/app/browser/app), matching the
+  // zone routes below, so no prefix stripping is needed. tools/mount-app-shell.mjs
+  // adds the root index.html SPA fallback and _headers (Referrer-Policy).
+  "build": { "command": "node tools/mount-app-shell.mjs" },
   "assets": {
     "directory": "./dist/apps/app/browser",
-    "binding": "ASSETS",
     "html_handling": "none",
-    "not_found_handling": "none"
+    "not_found_handling": "single-page-application"
   },
   "routes": [
     { "pattern": "specscore.studio/app", "zone_name": "specscore.studio" },

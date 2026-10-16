@@ -28,5 +28,8 @@ jobs:
       - name: Run unit tests
         run: pnpm exec nx test app
 
+      - name: Check Cloudflare assets-only deploy config
+        run: node --test tools/*.test.mjs
+
       - name: Build production bundle
         run: pnpm exec nx build app --configuration=production

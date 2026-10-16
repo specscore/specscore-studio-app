@@ -10,7 +10,7 @@
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/apps/app",
+        "outputPath": { "base": "dist/apps/app/browser/app", "browser": "" },
         "browser": "apps/app/src/main.ts",
         "tsConfig": "apps/app/tsconfig.app.json",
         "baseHref": "/app/",
@@ -80,7 +80,7 @@
       "dependsOn": ["build"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec serve dist/apps/app/browser --single --listen 4200"
+        "command": "node tools/mount-app-shell.mjs && pnpm exec serve dist/apps/app/browser --single --listen 4200"
       }
     }
   }

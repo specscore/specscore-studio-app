@@ -34,7 +34,7 @@ We build with our own tooling:
 | Auth | Firebase Auth (`@angular/fire`-free; uses `firebase/auth` directly via DI tokens) |
 | Data | Firestore via thin facade in `apps/app/src/app/core/firebase/firebase.providers.ts` |
 | GitHub API | Raw `fetch()` with `Accept: application/vnd.github.html+json` for pre-rendered markdown |
-| Deploy | Cloudflare Workers (Static Assets) — see `wrangler.jsonc` and `worker/index.js` |
+| Deploy | Cloudflare Workers (Static Assets) — assets-only, no Worker script — see `wrangler.jsonc` |
 
 ## Local dev
 
@@ -51,10 +51,11 @@ Before sign-in works locally, fill in real Firebase credentials in `apps/app/src
 
 Production deploys happen automatically when you push to `main`. **Cloudflare's GitHub integration** (Workers Builds) runs `pnpm install && pnpm exec nx build app` and deploys to the `specscore-studio-app` Worker, bound to `specscore.studio/app/*`.
 
-The Worker (`worker/index.js`) is a thin path-prefix-stripper:
+The Worker is assets-only (`wrangler.jsonc` has no `main`), so no request invokes Worker code or counts against the Workers request quota:
 - Requests under `/app/*` go to this Worker (Cloudflare route specificity)
-- The Worker strips `/app/` and serves static assets from `dist/apps/app/browser/`
-- 404s fall back to `/index.html` for Angular client-side routing
+- The Angular build emits straight into `dist/apps/app/browser/app/` (`baseHref: /app/`), so asset paths match request paths and nothing strips a prefix
+- `wrangler deploy` first runs `tools/mount-app-shell.mjs` (`build.command`), which copies `app/index.html` to the asset root and adds `_headers` (`Referrer-Policy: strict-origin`, from `cloudflare/_headers`)
+- `not_found_handling: single-page-application` serves that root `index.html` (200) for any other navigation, so Angular client-side routing works
 
 The GitHub Actions CI (`.github/workflows/ci.yml`) only verifies build + tests pass. It does **not** deploy.
 
@@ -64,9 +65,9 @@ The GitHub Actions CI (`.github/workflows/ci.yml`) only verifies build + tests p
 apps/
   app/                 Angular application
   app-e2e/             Playwright e2e (smoke tests)
-worker/
-  index.js             Cloudflare Worker: /app/ prefix stripper + SPA fallback
-wrangler.jsonc         Cloudflare Workers config (routes, asset binding)
+cloudflare/_headers    Static-asset response headers (Referrer-Policy)
+tools/mount-app-shell.mjs  Adds the SPA-fallback index.html + _headers at the asset root
+wrangler.jsonc         Cloudflare Workers config (assets-only, routes)
 firebase.json          Firestore rules + indexes (auth/data backend)
 .github/workflows/     CI: build + unit test on every push/PR
 ```
