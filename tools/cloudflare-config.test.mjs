@@ -42,3 +42,13 @@ test('Angular output is built under the /app/ mount path', () => {
     browser: '',
   });
 });
+
+test('nx build app itself emits the root index.html and _headers (Workers Builds ignores build.command)', () => {
+  const cfg = JSON.parse(read('wrangler.jsonc').replace(/^\s*\/\/.*$/gm, ''));
+  assert.equal(cfg.build, undefined);
+  const build = JSON.parse(read('apps/app/project.json')).targets.build;
+  assert.equal(build.executor, 'nx:run-commands');
+  for (const c of [build.options, build.configurations.production, build.configurations.development]) {
+    assert.ok(c.commands.at(-1).includes('tools/mount-app-shell.mjs'));
+  }
+});

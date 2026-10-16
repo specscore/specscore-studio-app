@@ -33,3 +33,12 @@ jobs:
 
       - name: Build production bundle
         run: pnpm exec nx build app --configuration=production
+
+      - name: Assert the deploy dir has the SPA fallback and headers
+        # Workers Builds runs only `nx build app` then `wrangler deploy` (it ignores
+        # wrangler build.command), so the build itself must emit these files.
+        run: |
+          test -s dist/apps/app/browser/index.html
+          test -s dist/apps/app/browser/app/index.html
+          grep -qx '  Referrer-Policy: strict-origin' dist/apps/app/browser/_headers
+          cmp dist/apps/app/browser/index.html dist/apps/app/browser/app/index.html

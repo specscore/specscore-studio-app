@@ -5,9 +5,10 @@
   // Assets-only: NO Worker script. Static asset requests are free and never
   // count against the Workers request quota. The Angular build emits everything
   // under /app/ (baseHref + outputPath dist/apps/app/browser/app), matching the
-  // zone routes below, so no prefix stripping is needed. tools/mount-app-shell.mjs
-  // adds the root index.html SPA fallback and _headers (Referrer-Policy).
-  "build": { "command": "node tools/mount-app-shell.mjs" },
+  // zone routes below, so no prefix stripping is needed. `nx build app` runs
+  // tools/mount-app-shell.mjs after the Angular build to add the root index.html SPA
+  // fallback and _headers (Referrer-Policy). Workers Builds ignores wrangler
+  // `build.command`, so do NOT rely on it.
   "assets": {
     "directory": "./dist/apps/app/browser",
     "html_handling": "none",

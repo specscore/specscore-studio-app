@@ -54,7 +54,7 @@ Production deploys happen automatically when you push to `main`. **Cloudflare's 
 The Worker is assets-only (`wrangler.jsonc` has no `main`), so no request invokes Worker code or counts against the Workers request quota:
 - Requests under `/app/*` go to this Worker (Cloudflare route specificity)
 - The Angular build emits straight into `dist/apps/app/browser/app/` (`baseHref: /app/`), so asset paths match request paths and nothing strips a prefix
-- `wrangler deploy` first runs `tools/mount-app-shell.mjs` (`build.command`), which copies `app/index.html` to the asset root and adds `_headers` (`Referrer-Policy: strict-origin`, from `cloudflare/_headers`)
+- `nx build app` runs the Angular build (`build-app`) and then `tools/mount-app-shell.mjs`, which copies `app/index.html` to the asset root and adds `_headers` (`Referrer-Policy: strict-origin`, from `cloudflare/_headers`). Workers Builds ignores wrangler `build.command`, so this lives in the Nx target; CI asserts both files exist
 - `not_found_handling: single-page-application` serves that root `index.html` (200) for any other navigation, so Angular client-side routing works
 
 The GitHub Actions CI (`.github/workflows/ci.yml`) only verifies build + tests pass. It does **not** deploy.
