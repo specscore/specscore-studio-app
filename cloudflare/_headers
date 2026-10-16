@@ -1,0 +1,7 @@
+# Served by Cloudflare static assets with no Worker script (wrangler.jsonc has no
+# `main`). REQ:referrer-policy-strict-origin (spec/features/studio-url-scheme):
+# every response carries `Referrer-Policy: strict-origin` so private
+# {org}/{repo}/{path} segments never leak via the Referer header when a user
+# follows a third-party link out of Studio. Only /app and /app/* reach this Worker.
+/*
+  Referrer-Policy: strict-origin

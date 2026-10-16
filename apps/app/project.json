@@ -6,11 +6,16 @@
   "sourceRoot": "apps/app/src",
   "tags": [],
   "targets": {
-    "build": {
+    "build-app": {
       "executor": "@angular/build:application",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
-        "outputPath": "dist/apps/app",
+        "outputPath": {
+          "base": "dist/apps/app/browser/app",
+          "browser": ""
+        },
         "browser": "apps/app/src/main.ts",
         "tsConfig": "apps/app/tsconfig.app.json",
         "baseHref": "/app/",
@@ -21,7 +26,10 @@
             "input": "apps/app/public"
           }
         ],
-        "styles": ["apps/app/src/tailwind.css", "apps/app/src/styles.scss"]
+        "styles": [
+          "apps/app/src/tailwind.css",
+          "apps/app/src/styles.scss"
+        ]
       },
       "configurations": {
         "production": {
@@ -53,15 +61,50 @@
       },
       "defaultConfiguration": "production"
     },
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": [
+        "{workspaceRoot}/dist/apps/app/browser"
+      ],
+      "cache": true,
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/cloudflare/_headers",
+        "{workspaceRoot}/tools/mount-app-shell.mjs"
+      ],
+      "options": {
+        "commands": [
+          "nx run app:build-app:production",
+          "node tools/mount-app-shell.mjs"
+        ],
+        "parallel": false
+      },
+      "configurations": {
+        "production": {
+          "commands": [
+            "nx run app:build-app:production",
+            "node tools/mount-app-shell.mjs"
+          ]
+        },
+        "development": {
+          "commands": [
+            "nx run app:build-app:development",
+            "node tools/mount-app-shell.mjs"
+          ]
+        }
+      },
+      "defaultConfiguration": "production"
+    },
     "serve": {
       "continuous": true,
       "executor": "@angular/build:dev-server",
       "configurations": {
         "production": {
-          "buildTarget": "app:build:production"
+          "buildTarget": "app:build-app:production"
         },
         "development": {
-          "buildTarget": "app:build:development"
+          "buildTarget": "app:build-app:development"
         }
       },
       "defaultConfiguration": "development"
@@ -72,15 +115,19 @@
     "test": {
       "executor": "@angular/build:unit-test",
       "options": {
-        "setupFiles": ["apps/app/src/test-setup.ts"]
+        "setupFiles": [
+          "apps/app/src/test-setup.ts"
+        ]
       }
     },
     "serve-static": {
       "continuous": true,
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec serve dist/apps/app/browser --single --listen 4200"
+        "command": "node tools/mount-app-shell.mjs && pnpm exec serve dist/apps/app/browser --single --listen 4200"
       }
     }
   }
