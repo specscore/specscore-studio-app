@@ -1,0 +1,6 @@
+{
+  "source": "improveit-now/improveit-now/packages/widget/widget.js",
+  "candidateTask": "widget-theme-app-coverage-r1",
+  "sha256": "a0d1d885b2ac5dd95a323471f9caa9e14ad97388dbad70c6986ce0e230bb0e33",
+  "scope": "Reviewed real SDK fixture including linked brand/project header and WebKit detached-src-before-first-append privacy fix. Not a deployed SDK receipt; frame responses are local privacy-test HTML, no provider writes."
+}

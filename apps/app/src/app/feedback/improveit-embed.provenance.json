@@ -1,0 +1,6 @@
+{
+  "source": "datatug/datatug-apps/libs/datatug/product-profiles/src/lib/feedback/improveit-embed.ts",
+  "task": "widget-theme-app-coverage-r1",
+  "sha256": "b9fba1efc70885b3430d56bdad2f67bb7585989a0d550340db267292a7577beb",
+  "scope": "Exact dependency-free source copy. OVDB browser JS is TypeScript transpileModule ES2022 output; Studio builds this source directly."
+}
