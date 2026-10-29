@@ -1,0 +1,20 @@
+:host { display: block; min-height: calc(96px + env(safe-area-inset-bottom)); }
+.product-feedback {
+    position: fixed;
+    right: max(18px, env(safe-area-inset-right));
+    bottom: max(18px, env(safe-area-inset-bottom));
+    z-index: 100;
+    max-width: calc(100vw - 36px);
+    min-height: 48px;
+    padding: 10px 18px;
+    border: 1px solid var(--surface-300, #cbd5e1);
+    border-radius: 999px;
+    background: var(--surface-card, #fff);
+    color: var(--text-color, #1e293b);
+    box-shadow: 0 2px 8px #17291820;
+    font: 600 14px/1.4 system-ui, sans-serif;
+    cursor: pointer;
+}
+.product-feedback:hover { border-color: var(--text-color, #1e293b); }
+.product-feedback:focus-visible { outline: 3px solid currentColor; outline-offset: -5px; }
+.product-feedback[aria-disabled="true"] { cursor: progress; opacity: .8; }

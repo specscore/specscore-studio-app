@@ -1,3 +1,7 @@
 @use './assets/layout/layout.scss';
 @use './assets/demo/demo.scss';
 @use 'primeicons/primeicons.css';
+
+/* Match the native/widget palette to PrimeNG's existing effective preference. */
+html { color-scheme: light; }
+html.app-dark { color-scheme: dark; }
